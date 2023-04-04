@@ -7,6 +7,6 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-cimvr_common = { git = "https://github.com/ChatImproVR/iteration0.git", branch = "main" }
-cimvr_engine_interface  = { git = "https://github.com/ChatImproVR/iteration0.git", branch = "main" }
+cimvr_common = { path = "../iteration0/common/" }
+cimvr_engine_interface  = { path = "../iteration0/engine_interface" }
 serde = { version = "1", features = ["derive"] }

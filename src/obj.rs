@@ -10,7 +10,6 @@ pub fn obj_lines_to_mesh(obj: &str) -> Mesh {
 
     for line in obj.lines() {
         // Split the line by whitespace
-        dbg!(line);
         let mut line = line.split_whitespace();
 
         // Break the first bit off
