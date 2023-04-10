@@ -2,6 +2,7 @@ use cimvr_engine_interface::{dbg, make_app_state, pkg_namespace, prelude::*, Fra
 
 use cimvr_common::{
     desktop::{InputEvent, KeyCode},
+    gamepad::{GamepadState, Axis, Button},
     glam::Vec3,
     render::{Mesh, MeshHandle, Primitive, Render, UploadMesh, Vertex},
     utils::input_helper::InputHelper,
@@ -166,20 +167,21 @@ impl UserState for ClientState {
         });
 
         io.send(&UploadMesh {
-            id: ENEMY_BULLET_HANDLE,
+            id: ENEMY_BULLET_HANDLE, 
             mesh: enemy_bullet(),
         });
 
         sched
             .add_system(Self::player_input_movement_update)
             .subscribe::<InputEvent>()
+            .subscribe::<GamepadState>()
             .subscribe::<FrameTime>()
             .build();
 
         sched
             .add_system(Self::player_input_fire_update)
             .subscribe::<InputEvent>()
-            .subscribe::<FrameTime>()
+            .subscribe::<GamepadState>()
             .build();
 
         sched
@@ -189,7 +191,6 @@ impl UserState for ClientState {
 
         sched
             .add_system(Self::enemy_random_fire_update)
-            .subscribe::<FrameTime>()
             .build();
 
         Self::default()
@@ -197,14 +198,24 @@ impl UserState for ClientState {
 }
 
 impl ClientState {
-    fn player_input_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+    fn player_input_movement_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
         self.input.handle_input_events(io);
 
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
+        let deadzone = 0.3;
         let mut direction = Vec3::ZERO;
 
-        if self.input.key_held(KeyCode::A) {
+        if let Some(GamepadState(gamepads)) = io.inbox_first(){ 
+            if let Some(gamepad) = gamepads.into_iter().next() {
+                if gamepad.axes[&Axis::LeftStickX] < -deadzone {
+                    direction += Vec3::new(-1.0, 0.0, 0.0);
+                }
+                if gamepad.axes[&Axis::LeftStickX] > deadzone {
+                    direction += Vec3::new(1.0, 0.0, 0.0);
+            }
+        }
+        if self.input.key_held(KeyCode::A){
             direction += Vec3::new(-1.0, 0.0, 0.0);
         }
 
@@ -224,13 +235,25 @@ impl ClientState {
             io.send(&command);
         }
     }
+}
 
-    fn player_input_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+    fn player_input_fire_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
         self.input.handle_input_events(io);
 
-        let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
+        if let Some(GamepadState(gamepads)) = io.inbox_first() {
+            if let Some(gamepad) = gamepads.into_iter().next() {
+                if gamepad.buttons[&Button::East] {
+                    let command = FireCommand {
+                        is_fired: true,
+                        from_player: true,
+                        from_enemy: false,
+                    };
+                    io.send(&command);
+                }
+            }
+        }
 
-        if self.input.key_held(KeyCode::Space) {
+        if self.input.key_pressed(KeyCode::Space) {
             let command = FireCommand {
                 is_fired: true,
                 from_player: true,
@@ -240,13 +263,14 @@ impl ClientState {
         }
     }
 
-    fn enemy_random_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+    fn enemy_random_movement_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
+        // Add random movement number generator within a range
         let direction = Vec3::new(-1., -1., 0.);
 
         if direction != Vec3::ZERO {
-            let distance = direction.normalize() * frame_time.delta * 70.0;
+            let distance = direction.normalize() * frame_time.delta * 100.0;
 
             let command = MoveCommand {
                 direction: distance,
@@ -258,10 +282,9 @@ impl ClientState {
         }
     }
 
-    fn enemy_random_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
+    fn enemy_random_fire_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
 
-        // Need to add the randomness here
+        // Need to add the randomness here of firing or not
 
         let command = FireCommand {
             is_fired: false,
@@ -315,12 +338,24 @@ impl UserState for ServerState {
         sched
             .add_system(Self::player_fire_update)
             .subscribe::<FireCommand>()
-            .query::<Player>(Access::Write)
-            .query::<Bullet>(Access::Write)
+            .query::<Player>(Access::Read)
             .build();
 
         sched
             .add_system(Self::player_bullet_movement_update)
+            .subscribe::<FrameTime>()
+            .query::<Transform>(Access::Write)
+            .query::<Bullet>(Access::Write)
+            .build();
+
+        sched
+            .add_system(Self::enemy_fire_update)
+            .subscribe::<FireCommand>()
+            .query::<Enemy>(Access::Read)
+            .build();
+
+        sched
+            .add_system(Self::enemy_bullet_movement_update)
             .subscribe::<FrameTime>()
             .query::<Transform>(Access::Write)
             .query::<Bullet>(Access::Write)
@@ -365,12 +400,11 @@ impl ServerState {
         {
             for key in query.iter() {
                 let x_limit = query.read::<WinSize>(key).w / 2.0;
-                let y_limit = query.read::<WinSize>(key).h / 4.0;
-                dbg!(y_limit);
+                let y_limit = query.read::<WinSize>(key).h / 4.;
                 if query.read::<Enemy>(key).current_position.x + direction.x < -x_limit
                     || query.read::<Enemy>(key).current_position.x + direction.x > x_limit
-                    || query.read::<Enemy>(key).current_position.y + direction.y < -y_limit
-                    || query.read::<Enemy>(key).current_position.y + direction.y > y_limit
+                    || query.read::<Enemy>(key).current_position.y + direction.y >= y_limit
+                    || query.read::<Enemy>(key).current_position.y + direction.y < y_limit - 20.0
                 {
                     return;
                 }
@@ -392,27 +426,10 @@ impl ServerState {
             from_enemy: false,
         }) = io.inbox_first()
         {
-            // let left_bullet = io
-            //         .create_entity()
-            //         .add_component(
-            //             Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
-            //         )
-            //         .add_component(Synchronized)
-            //         .add_component(Bullet {
-            //             from_enemy: false,
-            //             from_player: true,
-            //         })
-            //         .add_component(
-            //             Transform::default()
-            //                 .with_position(Vec3::new(-3., -23.5, 0.0)),
-            //         )
-            //         .build();
+                
+                for key in query.iter() {
 
-            for key in query.iter() {
-                // let current_position = query.read::<Player>(key).current_position;
-                dbg!("Hello World!");
-
-                let left_bullet = io
+                io
                     .create_entity()
                     .add_component(
                         Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
@@ -427,7 +444,7 @@ impl ServerState {
                     ))
                     .build();
 
-                let right_bullet = io
+                io
                     .create_entity()
                     .add_component(
                         Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
@@ -459,7 +476,45 @@ impl ServerState {
         }
     }
 
-    fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {}
+    fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        if let Some(FireCommand {
+            is_fired: true,
+            from_player: false,
+            from_enemy: true,
+        }) = io.inbox_first()
+        {
+            for key in query.iter() {
+                io
+                    .create_entity()
+                    .add_component(
+                        Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
+                    )
+                    .add_component(Synchronized)
+                    .add_component(Bullet {
+                        from_enemy: true,
+                        from_player: false,
+                    })
+                    .add_component(Transform::default().with_position(
+                        query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.0),
+                    ))
+                    .build();
+            }
+        }
+    }
+
+    fn enemy_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        if let Some(frame_time) = io.inbox_first::<FrameTime>() {
+            for key in query.iter() {
+                if query.read::<Bullet>(key).from_player == false
+                    && query.read::<Bullet>(key).from_enemy == true
+                {
+                    query.modify::<Transform>(key, |transform| {
+                        transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 150.0;
+                    });
+                }
+            }
+        }
+    }
 }
 
 // Defines entry points for the engine to hook into.
