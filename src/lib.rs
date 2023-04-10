@@ -2,7 +2,7 @@ use cimvr_engine_interface::{dbg, make_app_state, pkg_namespace, prelude::*, Fra
 
 use cimvr_common::{
     desktop::{InputEvent, KeyCode},
-    gamepad::{GamepadState, Axis, Button},
+    gamepad::{Axis, Button, GamepadState},
     glam::Vec3,
     render::{Mesh, MeshHandle, Primitive, Render, UploadMesh, Vertex},
     utils::input_helper::InputHelper,
@@ -167,7 +167,7 @@ impl UserState for ClientState {
         });
 
         io.send(&UploadMesh {
-            id: ENEMY_BULLET_HANDLE, 
+            id: ENEMY_BULLET_HANDLE,
             mesh: enemy_bullet(),
         });
 
@@ -189,9 +189,7 @@ impl UserState for ClientState {
             .subscribe::<FrameTime>()
             .build();
 
-        sched
-            .add_system(Self::enemy_random_fire_update)
-            .build();
+        sched.add_system(Self::enemy_random_fire_update).build();
 
         Self::default()
     }
@@ -206,36 +204,36 @@ impl ClientState {
         let deadzone = 0.3;
         let mut direction = Vec3::ZERO;
 
-        if let Some(GamepadState(gamepads)) = io.inbox_first(){ 
+        if let Some(GamepadState(gamepads)) = io.inbox_first() {
             if let Some(gamepad) = gamepads.into_iter().next() {
                 if gamepad.axes[&Axis::LeftStickX] < -deadzone {
                     direction += Vec3::new(-1.0, 0.0, 0.0);
                 }
                 if gamepad.axes[&Axis::LeftStickX] > deadzone {
                     direction += Vec3::new(1.0, 0.0, 0.0);
+                }
+            }
+            if self.input.key_held(KeyCode::A) {
+                direction += Vec3::new(-1.0, 0.0, 0.0);
+            }
+
+            if self.input.key_held(KeyCode::D) {
+                direction += Vec3::new(1.0, 0.0, 0.0);
+            }
+
+            if direction != Vec3::ZERO {
+                let distance = direction.normalize() * frame_time.delta * 150.0;
+
+                let command = MoveCommand {
+                    direction: distance,
+                    from_player: true,
+                    from_enemy: false,
+                };
+
+                io.send(&command);
             }
         }
-        if self.input.key_held(KeyCode::A){
-            direction += Vec3::new(-1.0, 0.0, 0.0);
-        }
-
-        if self.input.key_held(KeyCode::D) {
-            direction += Vec3::new(1.0, 0.0, 0.0);
-        }
-
-        if direction != Vec3::ZERO {
-            let distance = direction.normalize() * frame_time.delta * 150.0;
-
-            let command = MoveCommand {
-                direction: distance,
-                from_player: true,
-                from_enemy: false,
-            };
-
-            io.send(&command);
-        }
     }
-}
 
     fn player_input_fire_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
         self.input.handle_input_events(io);
@@ -283,7 +281,6 @@ impl ClientState {
     }
 
     fn enemy_random_fire_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
-
         // Need to add the randomness here of firing or not
 
         let command = FireCommand {
@@ -426,11 +423,8 @@ impl ServerState {
             from_enemy: false,
         }) = io.inbox_first()
         {
-                
-                for key in query.iter() {
-
-                io
-                    .create_entity()
+            for key in query.iter() {
+                io.create_entity()
                     .add_component(
                         Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
                     )
@@ -444,8 +438,7 @@ impl ServerState {
                     ))
                     .build();
 
-                io
-                    .create_entity()
+                io.create_entity()
                     .add_component(
                         Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
                     )
@@ -484,11 +477,8 @@ impl ServerState {
         }) = io.inbox_first()
         {
             for key in query.iter() {
-                io
-                    .create_entity()
-                    .add_component(
-                        Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
-                    )
+                io.create_entity()
+                    .add_component(Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles))
                     .add_component(Synchronized)
                     .add_component(Bullet {
                         from_enemy: true,
@@ -520,3 +510,11 @@ impl ServerState {
 // Defines entry points for the engine to hook into.
 // Calls new() for the appropriate state.
 make_app_state!(ClientState, ServerState);
+
+// Bullet out of bound control
+// Enemy Random movement and firerate
+// Enemy bullet collision and player bullet collision
+// Enemy and Player Spawning
+// Enemy Count
+// Score (if possible)
+// Tetris next?
