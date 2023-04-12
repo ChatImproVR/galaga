@@ -3,11 +3,12 @@ use cimvr_engine_interface::{dbg, make_app_state, pkg_namespace, prelude::*, Fra
 use cimvr_common::{
     desktop::{InputEvent, KeyCode},
     gamepad::{Axis, Button, GamepadState},
-    glam::Vec3,
+    glam::{EulerRot, Quat, Vec3},
     render::{Mesh, MeshHandle, Primitive, Render, UploadMesh, Vertex},
     utils::input_helper::InputHelper,
     Transform,
 };
+use obj::obj_lines_to_mesh;
 use serde::{Deserialize, Serialize};
 mod obj;
 
@@ -119,7 +120,7 @@ fn enemy() -> Mesh {
 }
 
 fn enemy_bullet() -> Mesh {
-    let size: f32 = 0.1;
+    let size: f32 = 0.5;
 
     let vertices = vec![
         Vertex::new([-size, -size, 0.0], [1.0, 0.0, 0.0]),
@@ -134,7 +135,7 @@ fn enemy_bullet() -> Mesh {
 }
 
 fn player_bullet() -> Mesh {
-    let size: f32 = 0.1;
+    let size: f32 = 0.5;
 
     let vertices = vec![
         Vertex::new([-size, -size, 0.0], [0.0, 1.0, 0.0]),
@@ -153,7 +154,7 @@ impl UserState for ClientState {
     fn new(io: &mut EngineIo, sched: &mut EngineSchedule<Self>) -> Self {
         io.send(&UploadMesh {
             id: PLAYER_HANDLE,
-            mesh: player(),
+            mesh: obj_lines_to_mesh(&include_str!("assets/galagaship.obj")),
         });
 
         io.send(&UploadMesh {
@@ -300,8 +301,12 @@ impl UserState for ServerState {
     fn new(io: &mut EngineIo, sched: &mut EngineSchedule<Self>) -> Self {
         // Create Player with components
         io.create_entity()
-            .add_component(Transform::default().with_position(Vec3::new(0.0, -50.0, 0.0)))
-            .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Triangles))
+            .add_component(
+                Transform::default()
+                    .with_position(Vec3::new(0.0, -50.0, 0.0))
+                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+            )
+            .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
             .add_component(Player::default())
             .add_component(WinSize::default())
             .add_component(Synchronized)
@@ -364,93 +369,91 @@ impl UserState for ServerState {
 
 impl ServerState {
     fn player_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        if let Some(MoveCommand {
-            direction,
-            from_player: true,
-            from_enemy: false,
-        }) = io.inbox_first()
-        {
-            for key in query.iter() {
-                let x_limit = query.read::<WinSize>(key).w / 2.0;
-                if query.read::<Player>(key).current_position.x + direction.x < -x_limit
-                    || query.read::<Player>(key).current_position.x + direction.x > x_limit
-                {
-                    return;
-                }
+        for player_movement in io.inbox::<MoveCommand>() {
+            if player_movement.from_player {
+                for key in query.iter() {
+                    let x_limit = query.read::<WinSize>(key).w / 2.0;
+                    if query.read::<Player>(key).current_position.x + player_movement.direction.x
+                        < -x_limit
+                        || query.read::<Player>(key).current_position.x
+                            + player_movement.direction.x
+                            > x_limit
+                    {
+                        return;
+                    }
 
-                query.modify::<Transform>(key, |transform| {
-                    transform.pos += direction;
-                });
-                query.modify::<Player>(key, |player| {
-                    player.current_position += direction;
-                });
+                    query.modify::<Transform>(key, |transform| {
+                        transform.pos += player_movement.direction;
+                    });
+                    query.modify::<Player>(key, |player| {
+                        player.current_position += player_movement.direction;
+                    });
+                }
             }
         }
     }
 
     fn enemy_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        if let Some(MoveCommand {
-            direction,
-            from_player: false,
-            from_enemy: true,
-        }) = io.inbox_first()
-        {
-            for key in query.iter() {
-                let x_limit = query.read::<WinSize>(key).w / 2.0;
-                let y_limit = query.read::<WinSize>(key).h / 4.;
-                if query.read::<Enemy>(key).current_position.x + direction.x < -x_limit
-                    || query.read::<Enemy>(key).current_position.x + direction.x > x_limit
-                    || query.read::<Enemy>(key).current_position.y + direction.y >= y_limit
-                    || query.read::<Enemy>(key).current_position.y + direction.y < y_limit - 20.0
-                {
-                    return;
+        for enemy_movement in io.inbox::<MoveCommand>() {
+            if enemy_movement.from_enemy {
+                for key in query.iter() {
+                    let x_limit = query.read::<WinSize>(key).w / 2.0;
+                    let y_limit = query.read::<WinSize>(key).h / 4.;
+                    if query.read::<Enemy>(key).current_position.x + enemy_movement.direction.x
+                        < -x_limit
+                        || query.read::<Enemy>(key).current_position.x + enemy_movement.direction.x
+                            > x_limit
+                        || query.read::<Enemy>(key).current_position.y + enemy_movement.direction.y
+                            >= y_limit
+                        || query.read::<Enemy>(key).current_position.y + enemy_movement.direction.y
+                            < y_limit - 20.0
+                    {
+                        return;
+                    }
+                    dbg!(query.read::<Enemy>(key).current_position);
+                    query.modify::<Transform>(key, |transform| {
+                        transform.pos += enemy_movement.direction;
+                    });
+                    query.modify::<Enemy>(key, |enemy| {
+                        enemy.current_position += enemy_movement.direction;
+                    });
                 }
-                dbg!(query.read::<Enemy>(key).current_position);
-                query.modify::<Transform>(key, |transform| {
-                    transform.pos += direction;
-                });
-                query.modify::<Enemy>(key, |enemy| {
-                    enemy.current_position += direction;
-                });
             }
         }
     }
 
     fn player_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        if let Some(FireCommand {
-            is_fired: true,
-            from_player: true,
-            from_enemy: false,
-        }) = io.inbox_first()
-        {
-            for key in query.iter() {
-                io.create_entity()
-                    .add_component(
-                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
-                    )
-                    .add_component(Synchronized)
-                    .add_component(Bullet {
-                        from_enemy: false,
-                        from_player: true,
-                    })
-                    .add_component(Transform::default().with_position(
-                        query.read::<Player>(key).current_position + Vec3::new(-1.5, 1.5, 0.0),
-                    ))
-                    .build();
+        for player_fire in io.inbox().collect::<Vec<FireCommand>>() {
+            if player_fire.from_player {
+                for key in query.iter() {
+                    io.create_entity()
+                        .add_component(
+                            Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
+                        )
+                        .add_component(Synchronized)
+                        .add_component(Bullet {
+                            from_enemy: false,
+                            from_player: true,
+                        })
+                        .add_component(Transform::default().with_position(
+                            query.read::<Player>(key).current_position + Vec3::new(-1.5, 1.5, 0.0),
+                        ))
+                        .build();
 
-                io.create_entity()
-                    .add_component(
-                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
-                    )
-                    .add_component(Synchronized)
-                    .add_component(Bullet {
-                        from_enemy: false,
-                        from_player: true,
-                    })
-                    .add_component(Transform::default().with_position(
-                        query.read::<Player>(key).current_position + Vec3::new(1.5, 1.5, 0.0),
-                    ))
-                    .build();
+                    io.create_entity()
+                        .add_component(
+                            Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
+                        )
+                        .add_component(Synchronized)
+                        .add_component(Bullet {
+                            from_enemy: false,
+                            from_player: true,
+                        })
+                        .add_component(Transform::default().with_position(
+                            query.read::<Player>(key).current_position + Vec3::new(1.5, 1.5, 0.0),
+                        ))
+                        .build();
+                }
             }
         }
     }
@@ -458,8 +461,7 @@ impl ServerState {
     fn player_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter() {
-                if query.read::<Bullet>(key).from_player == true
-                    && query.read::<Bullet>(key).from_enemy == false
+                if query.read::<Bullet>(key).from_player
                 {
                     query.modify::<Transform>(key, |transform| {
                         transform.pos += Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * 150.0;
@@ -470,33 +472,30 @@ impl ServerState {
     }
 
     fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        if let Some(FireCommand {
-            is_fired: true,
-            from_player: false,
-            from_enemy: true,
-        }) = io.inbox_first()
-        {
-            for key in query.iter() {
-                io.create_entity()
-                    .add_component(Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles))
-                    .add_component(Synchronized)
-                    .add_component(Bullet {
-                        from_enemy: true,
-                        from_player: false,
-                    })
-                    .add_component(Transform::default().with_position(
-                        query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.0),
-                    ))
-                    .build();
+        for enemy_fire in io.inbox().collect::<Vec<FireCommand>>(){
+            if enemy_fire.from_enemy{
+                for key in query.iter() {
+                    io.create_entity()
+                        .add_component(Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles))
+                        .add_component(Synchronized)
+                        .add_component(Bullet {
+                            from_enemy: true,
+                            from_player: false,
+                        })
+                        .add_component(Transform::default().with_position(
+                            query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.0),
+                        ))
+                        .build();
+                }
             }
+
         }
     }
 
     fn enemy_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter() {
-                if query.read::<Bullet>(key).from_player == false
-                    && query.read::<Bullet>(key).from_enemy == true
+                if query.read::<Bullet>(key).from_enemy == true
                 {
                     query.modify::<Transform>(key, |transform| {
                         transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 150.0;
