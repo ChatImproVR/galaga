@@ -76,7 +76,7 @@ pub struct WinSize {
 
 impl Default for WinSize {
     fn default() -> Self {
-        Self { w: 100.0, h: 200.0 }
+        Self { w: 80.0, h: 120.0 }
     }
 }
 
@@ -85,25 +85,30 @@ const PLAYER_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Player"));
 const ENEMY_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Enemy"));
 const PLAYER_BULLET_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Player Bullet"));
 const ENEMY_BULLET_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Enemy Bullet"));
+const WINDOW_SIZE_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Window Size"));
+
+// Create some constant value for Windows
+const WITDH: f32 = 80.;
+const HEIGHT: f32 = 120.;
 
 // Create Meshes for each object
 // Create the Player Mesh
-fn player() -> Mesh {
-    let size: f32 = 3.;
+// fn player() -> Mesh {
+//     let size: f32 = 3.;
 
-    let vertices = vec![
-        Vertex::new([-size, -size, 0.0], [0.0, 0.0, 1.0]), // Vertex 0
-        Vertex::new([size, -size, 0.0], [0.0, 0.0, 1.0]),  // Vertex 1
-        Vertex::new([size, size, 0.0], [0.0, 0.0, 1.0]),   // Vertex 2
-        Vertex::new([-size, size, 0.0], [0.0, 0.0, 1.0]),  // Vertex 3
-    ];
+//     let vertices = vec![
+//         Vertex::new([-size, -size, 0.0], [0.0, 0.0, 1.0]), // Vertex 0
+//         Vertex::new([size, -size, 0.0], [0.0, 0.0, 1.0]),  // Vertex 1
+//         Vertex::new([size, size, 0.0], [0.0, 0.0, 1.0]),   // Vertex 2
+//         Vertex::new([-size, size, 0.0], [0.0, 0.0, 1.0]),  // Vertex 3
+//     ];
 
-    let indices: Vec<u32> = vec![3, 0, 2, 1, 2, 0];
+//     let indices: Vec<u32> = vec![3, 0, 2, 1, 2, 0];
 
-    Mesh { vertices, indices }
-}
+//     Mesh { vertices, indices }
+// }
 
-// Create the Enemy Mesh
+// // Create the Enemy Mesh
 fn enemy() -> Mesh {
     let size: f32 = 3.;
 
@@ -119,21 +124,7 @@ fn enemy() -> Mesh {
     Mesh { vertices, indices }
 }
 
-fn enemy_bullet() -> Mesh {
-    let size: f32 = 0.5;
-
-    let vertices = vec![
-        Vertex::new([-size, -size, 0.0], [1.0, 0.0, 0.0]),
-        Vertex::new([size, -size, 0.0], [1.0, 0.0, 0.0]),
-        Vertex::new([size, size, 0.0], [1.0, 0.0, 0.0]),
-        Vertex::new([-size, size, 0.0], [1.0, 0.0, 0.0]),
-    ];
-
-    let indices: Vec<u32> = vec![3, 0, 2, 1, 2, 0];
-
-    Mesh { vertices, indices }
-}
-
+// Create Player Bullet Mesh
 fn player_bullet() -> Mesh {
     let size: f32 = 0.5;
 
@@ -149,12 +140,46 @@ fn player_bullet() -> Mesh {
     Mesh { vertices, indices }
 }
 
+// Create Enemy Bullet
+fn enemy_bullet() -> Mesh {
+    let size: f32 = 0.5;
+
+    let vertices = vec![
+        Vertex::new([-size, -size, 0.0], [1.0, 0.0, 0.0]),
+        Vertex::new([size, -size, 0.0], [1.0, 0.0, 0.0]),
+        Vertex::new([size, size, 0.0], [1.0, 0.0, 0.0]),
+        Vertex::new([-size, size, 0.0], [1.0, 0.0, 0.0]),
+    ];
+
+    let indices: Vec<u32> = vec![3, 0, 2, 1, 2, 0];
+
+    Mesh { vertices, indices }
+}
+
+fn window_size() -> Mesh {
+    let vertices = vec![
+        Vertex::new([-WITDH / 2., -HEIGHT / 2., 0.0], [1.; 3]),
+        Vertex::new([WITDH / 2., -HEIGHT / 2., 0.0], [1.; 3]),
+        Vertex::new([WITDH / 2., HEIGHT / 2., 0.0], [1.; 3]),
+        Vertex::new([-WITDH / 2., HEIGHT / 2., 0.0], [1.; 3]),
+    ];
+
+    let indices: Vec<u32> = vec![3, 0, 0, 1, 1, 2, 2, 3];
+
+    Mesh { vertices, indices }
+}
+
 impl UserState for ClientState {
     // Implement a constructor
     fn new(io: &mut EngineIo, sched: &mut EngineSchedule<Self>) -> Self {
+        let color = [0., 1., 0.];
+        let mut newMesh = obj_lines_to_mesh(&include_str!("assets/galagaship.obj"));
+
+        newMesh.vertices.iter_mut().for_each(|v| v.uvw = color);
+
         io.send(&UploadMesh {
             id: PLAYER_HANDLE,
-            mesh: obj_lines_to_mesh(&include_str!("assets/galagaship.obj")),
+            mesh: newMesh,
         });
 
         io.send(&UploadMesh {
@@ -170,6 +195,11 @@ impl UserState for ClientState {
         io.send(&UploadMesh {
             id: ENEMY_BULLET_HANDLE,
             mesh: enemy_bullet(),
+        });
+
+        io.send(&UploadMesh {
+            id: WINDOW_SIZE_HANDLE,
+            mesh: window_size(),
         });
 
         sched
@@ -266,7 +296,7 @@ impl ClientState {
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
         // Add random movement number generator within a range
-        let direction = Vec3::new(-1., -1., 0.);
+        let direction = Vec3::new(0., 0., 0.);
 
         if direction != Vec3::ZERO {
             let distance = direction.normalize() * frame_time.delta * 100.0;
@@ -319,6 +349,12 @@ impl UserState for ServerState {
             .add_component(Synchronized)
             .add_component(WinSize::default())
             .add_component(Enemy::default())
+            .build();
+
+        io.create_entity()
+            .add_component(Transform::default())
+            .add_component(Render::new(WINDOW_SIZE_HANDLE).primitive(Primitive::Lines))
+            .add_component(Synchronized)
             .build();
 
         sched
@@ -374,9 +410,11 @@ impl ServerState {
                 for key in query.iter() {
                     let x_limit = query.read::<WinSize>(key).w / 2.0;
                     if query.read::<Player>(key).current_position.x + player_movement.direction.x
+                        - 3.
                         < -x_limit
                         || query.read::<Player>(key).current_position.x
                             + player_movement.direction.x
+                            + 3.
                             > x_limit
                     {
                         return;
@@ -399,9 +437,11 @@ impl ServerState {
                 for key in query.iter() {
                     let x_limit = query.read::<WinSize>(key).w / 2.0;
                     let y_limit = query.read::<WinSize>(key).h / 4.;
-                    if query.read::<Enemy>(key).current_position.x + enemy_movement.direction.x
+                    if query.read::<Enemy>(key).current_position.x + enemy_movement.direction.x - 3.
                         < -x_limit
-                        || query.read::<Enemy>(key).current_position.x + enemy_movement.direction.x
+                        || query.read::<Enemy>(key).current_position.x
+                            + enemy_movement.direction.x
+                            + 3.
                             > x_limit
                         || query.read::<Enemy>(key).current_position.y + enemy_movement.direction.y
                             >= y_limit
@@ -461,8 +501,10 @@ impl ServerState {
     fn player_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter() {
-                if query.read::<Bullet>(key).from_player
-                {
+                if query.read::<Bullet>(key).from_player {
+                    if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
+                        io.remove_entity(key);
+                    }
                     query.modify::<Transform>(key, |transform| {
                         transform.pos += Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * 150.0;
                     });
@@ -472,11 +514,13 @@ impl ServerState {
     }
 
     fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        for enemy_fire in io.inbox().collect::<Vec<FireCommand>>(){
-            if enemy_fire.from_enemy{
+        for enemy_fire in io.inbox().collect::<Vec<FireCommand>>() {
+            if enemy_fire.from_enemy {
                 for key in query.iter() {
                     io.create_entity()
-                        .add_component(Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles))
+                        .add_component(
+                            Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
+                        )
                         .add_component(Synchronized)
                         .add_component(Bullet {
                             from_enemy: true,
@@ -488,15 +532,16 @@ impl ServerState {
                         .build();
                 }
             }
-
         }
     }
 
     fn enemy_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter() {
-                if query.read::<Bullet>(key).from_enemy == true
-                {
+                if query.read::<Bullet>(key).from_enemy == true {
+                    if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
+                        io.remove_entity(key);
+                    }
                     query.modify::<Transform>(key, |transform| {
                         transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 150.0;
                     });
@@ -510,7 +555,6 @@ impl ServerState {
 // Calls new() for the appropriate state.
 make_app_state!(ClientState, ServerState);
 
-// Bullet out of bound control
 // Enemy Random movement and firerate
 // Enemy bullet collision and player bullet collision
 // Enemy and Player Spawning
