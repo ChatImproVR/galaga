@@ -1,10 +1,4 @@
-use cimvr_engine_interface::{
-    dbg, make_app_state,
-    pcg::{Pcg},
-    pkg_namespace,
-    prelude::*,
-    FrameTime,
-};
+use cimvr_engine_interface::{dbg, make_app_state, pcg::Pcg, pkg_namespace, prelude::*, FrameTime};
 
 use cimvr_common::{
     desktop::{InputEvent, KeyCode},
@@ -91,6 +85,11 @@ impl Enemy {
         self.bullet_count = count;
         self
     }
+
+    pub fn decrease_one_bullet_count(mut self) -> Self {
+        self.bullet_count -= 1;
+        self
+    }
 }
 
 impl Default for Enemy {
@@ -103,10 +102,10 @@ impl Default for Enemy {
 }
 
 #[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
-pub struct PlayerBullet;
-
-#[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
-pub struct EnemyBullet;
+pub struct Bullet {
+    from_player: bool,
+    from_enemy: bool,
+}
 
 #[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
 pub struct EnemyCount(u32);
@@ -202,30 +201,30 @@ fn window_size() -> Mesh {
 impl UserState for ClientState {
     // Implement a constructor
     fn new(io: &mut EngineIo, sched: &mut EngineSchedule<Self>) -> Self {
-        let playerColor = [0., 1., 0.];
-        let mut newPlayerMesh = obj_lines_to_mesh(&include_str!("assets/galagaship.obj"));
+        let player_color = [0., 1., 0.];
+        let mut new_player_mesh = obj_lines_to_mesh(&include_str!("assets/galagaship.obj"));
 
-        newPlayerMesh
+        new_player_mesh
             .vertices
             .iter_mut()
-            .for_each(|v| v.uvw = playerColor);
+            .for_each(|v| v.uvw = player_color);
 
-        let enemyColor = [1., 0., 0.];
-        let mut newEnemyMesh = obj_lines_to_mesh(&include_str!("assets/galaga_enemy.obj"));
+        let enemy_color = [1., 0., 0.];
+        let mut new_enemy_mesh = obj_lines_to_mesh(&include_str!("assets/galaga_enemy.obj"));
 
-        newEnemyMesh
+        new_enemy_mesh
             .vertices
             .iter_mut()
-            .for_each(|v| v.uvw = enemyColor);
+            .for_each(|v| v.uvw = enemy_color);
 
         io.send(&UploadMesh {
             id: PLAYER_HANDLE,
-            mesh: newPlayerMesh,
+            mesh: new_player_mesh,
         });
 
         io.send(&UploadMesh {
             id: ENEMY_HANDLE,
-            mesh: newEnemyMesh,
+            mesh: new_enemy_mesh,
         });
 
         io.send(&UploadMesh {
@@ -453,7 +452,7 @@ impl UserState for ServerState {
             .add_system(Self::player_bullet_movement_update)
             .subscribe::<FrameTime>()
             .query::<Transform>(Access::Write)
-            .query::<PlayerBullet>(Access::Write)
+            .query::<Bullet>(Access::Write)
             .build();
 
         sched
@@ -466,7 +465,13 @@ impl UserState for ServerState {
             .add_system(Self::enemy_bullet_movement_update)
             .subscribe::<FrameTime>()
             .query::<Transform>(Access::Write)
-            .query::<EnemyBullet>(Access::Write)
+            .query::<Bullet>(Access::Write)
+            .build();
+
+        sched
+            .add_system(Self::bullet_to_bullet_collision)
+            .query::<Transform>(Access::Write)
+            .query::<Bullet>(Access::Write)
             .build();
 
         Self
@@ -575,7 +580,10 @@ impl ServerState {
                             Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
                         )
                         .add_component(Synchronized)
-                        .add_component(PlayerBullet)
+                        .add_component(Bullet {
+                            from_enemy: false,
+                            from_player: true,
+                        })
                         .add_component(Transform::default().with_position(
                             query.read::<Player>(key).current_position + Vec3::new(-1.5, 1.5, 0.0),
                         ))
@@ -586,7 +594,10 @@ impl ServerState {
                             Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
                         )
                         .add_component(Synchronized)
-                        .add_component(PlayerBullet)
+                        .add_component(Bullet {
+                            from_enemy: false,
+                            from_player: true,
+                        })
                         .add_component(Transform::default().with_position(
                             query.read::<Player>(key).current_position + Vec3::new(1.5, 1.5, 0.0),
                         ))
@@ -599,12 +610,14 @@ impl ServerState {
     fn player_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter() {
-                if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
-                    io.remove_entity(key);
+                if query.read::<Bullet>(key).from_player {
+                    if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
+                        io.remove_entity(key);
+                    }
+                    query.modify::<Transform>(key, |transform| {
+                        transform.pos += Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * 150.0;
+                    });
                 }
-                query.modify::<Transform>(key, |transform| {
-                    transform.pos += Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * 150.0;
-                });
             }
         }
     }
@@ -622,7 +635,10 @@ impl ServerState {
                             Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
                         )
                         .add_component(Synchronized)
-                        .add_component(EnemyBullet)
+                        .add_component(Bullet {
+                            from_enemy: true,
+                            from_player: false,
+                        })
                         .add_component(Transform::default().with_position(
                             query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.0),
                         ))
@@ -635,29 +651,28 @@ impl ServerState {
     fn enemy_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter() {
-                if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
-                    io.remove_entity(key);
+                if query.read::<Bullet>(key).from_enemy {
+                    if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
+                        io.remove_entity(key);
+                        query.read::<Enemy>(key).decrease_one_bullet_count();
+                    }
+                    query.modify::<Transform>(key, |transform| {
+                        transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 50.0;
+                    });
                 }
-                query.modify::<Transform>(key, |transform| {
-                    transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 50.0;
-                });
             }
         }
     }
 
-    fn bullet_to_bullet_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult){
-
+    fn bullet_to_bullet_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // for key in query.iter() {
+        //     if query.read::<Bullet>(key).from_enemy
+        // }
     }
 
-    fn player_bullet_to_enemy_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult){
-        
-    }
+    fn player_bullet_to_enemy_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {}
 
-    fn enemy_bullet_to_player_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult){
-        
-    }
-
-
+    fn enemy_bullet_to_player_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {}
 }
 
 // Defines entry points for the engine to hook into.
