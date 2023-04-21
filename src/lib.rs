@@ -419,59 +419,97 @@ impl UserState for ServerState {
 
         sched
             .add_system(Self::spawn_player)
-            .query::<Player>(Access::Write)
+            .query("Player")
+                .intersect::<Player>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::spawn_enemy)
-            .query::<Enemy>(Access::Write)
-            .query::<EnemyCount>(Access::Write)
+            .query("Enemy")
+                .intersect::<Enemy>(Access::Write)
+                .intersect::<EnemyCount>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::player_movement_update)
             .subscribe::<MoveCommand>()
-            .query::<Transform>(Access::Write)
-            .query::<Player>(Access::Write)
+            .query("Player_Movement")
+                .intersect::<Transform>(Access::Write)
+                .intersect::<Player>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::enemy_movement_update)
             .subscribe::<MoveCommand>()
-            .query::<Transform>(Access::Write)
-            .query::<Enemy>(Access::Write)
+            .query("Enemy_Movement")
+                .intersect::<Transform>(Access::Write)
+                .intersect::<Enemy>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::player_fire_update)
             .subscribe::<FireCommand>()
-            .query::<Player>(Access::Read)
+            .query("Player_Fire_Input")
+                .intersect::<Player>(Access::Read)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::player_bullet_movement_update)
             .subscribe::<FrameTime>()
-            .query::<Transform>(Access::Write)
-            .query::<Bullet>(Access::Write)
+            .query("Player_Bullet_Movement")
+                .intersect::<Transform>(Access::Write)
+                .intersect::<Bullet>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::enemy_fire_update)
             .subscribe::<FireCommand>()
-            .query::<Enemy>(Access::Write)
+            .query("Enemy_Fire_Input")
+                .intersect::<Enemy>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::enemy_bullet_movement_update)
             .subscribe::<FrameTime>()
-            .query::<Transform>(Access::Write)
-            .query::<Bullet>(Access::Write)
+            .query("Enemy_Bullet_Movement")
+                .intersect::<Transform>(Access::Write)
+                .intersect::<Bullet>(Access::Write)
+            .qcommit()
+            .query("Enemy_Bullet_Count_Update")
+                .intersect::<Enemy>(Access::Write)
+            .qcommit()
             .build();
 
         sched
             .add_system(Self::bullet_to_bullet_collision)
-            .query::<Transform>(Access::Write)
-            .query::<Bullet>(Access::Write)
+            .query("Enemy_Bullet")
+                .intersect::<Transform>(Access::Write)
+                .intersect::<Bullet>(Access::Write)
+            .qcommit()
+            .query("Player_Bullet")
+                .intersect::<Transform>(Access::Write)
+                .intersect::<Bullet>(Access::Write)
+            .qcommit()
+            .build();
+
+        sched
+            .add_system(Self::player_bullet_to_enemy_collision)
+            .query("Player_Bullet")
+                .intersect::<Transform>(Access::Read)
+                .intersect::<Bullet>(Access::Write)
+            .qcommit()
+            .query("Enemy")
+                .intersect::<Enemy>(Access::Write)
+                .intersect::<EnemyCount>(Access::Write)
+                .intersect::<Transform>(Access::Read)
+            .qcommit()
             .build();
 
         Self
@@ -480,7 +518,7 @@ impl UserState for ServerState {
 
 impl ServerState {
     fn spawn_player(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        for key in query.iter() {
+        for key in query.iter("Player") {
             if !(query.read::<Player>(key).is_alive) {
                 io.create_entity()
                     .add_component(
@@ -497,7 +535,7 @@ impl ServerState {
     }
 
     fn spawn_enemy(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        for key in query.iter() {
+        for key in query.iter("Enemy") {
             if query.read::<EnemyCount>(key).0 < ENEMY_COUNT {
                 io.create_entity()
                     .add_component(
@@ -520,7 +558,7 @@ impl ServerState {
     fn player_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         for player_movement in io.inbox::<MoveCommand>() {
             if player_movement.from_player {
-                for key in query.iter() {
+                for key in query.iter("Player_Movement") {
                     let x_limit = WITDH / 2.0;
                     if query.read::<Player>(key).current_position.x + player_movement.direction.x
                         - 3.
@@ -547,7 +585,7 @@ impl ServerState {
     fn enemy_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         for enemy_movement in io.inbox::<MoveCommand>() {
             if enemy_movement.from_enemy {
-                for key in query.iter() {
+                for key in query.iter("Enemy_Movement") {
                     let x_limit = WITDH / 2.0;
                     let y_upper_limit = HEIGHT / 2.;
                     let y_limit = HEIGHT / 5.;
@@ -574,7 +612,7 @@ impl ServerState {
     fn player_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         for player_fire in io.inbox().collect::<Vec<FireCommand>>() {
             if player_fire.from_player {
-                for key in query.iter() {
+                for key in query.iter("Player_Fire_Input") {
                     io.create_entity()
                         .add_component(
                             Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
@@ -609,7 +647,7 @@ impl ServerState {
 
     fn player_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
-            for key in query.iter() {
+            for key in query.iter("Player_Bullet_Movement") {
                 if query.read::<Bullet>(key).from_player {
                     if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
                         io.remove_entity(key);
@@ -625,11 +663,11 @@ impl ServerState {
     fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         for enemy_fire in io.inbox().collect::<Vec<FireCommand>>() {
             if enemy_fire.from_enemy {
-                for key in query.iter() {
-                    // if query.read::<Enemy>(key).bullet_count < ENEMY_MAX_BULLET{
-                    // query.modify::<Enemy>(key, |value|{
-                    //     value.bullet_count += 1;
-                    // });
+                for key in query.iter("Enemy_Fire_Input") {
+                    if query.read::<Enemy>(key).bullet_count < ENEMY_MAX_BULLET{
+                    query.modify::<Enemy>(key, |value|{
+                        value.bullet_count += 1;
+                    });
                     io.create_entity()
                         .add_component(
                             Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
@@ -645,16 +683,22 @@ impl ServerState {
                         .build();
                 }
             }
+            }
         }
     }
 
     fn enemy_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
-            for key in query.iter() {
+            for key in query.iter("Enemy_Bullet_Movement") {
                 if query.read::<Bullet>(key).from_enemy {
                     if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
                         io.remove_entity(key);
-                        query.read::<Enemy>(key).decrease_one_bullet_count();
+                        for key2 in query.iter("Enemy_Bullet_Count_Update"){
+                            query.modify::<Enemy>(key2, |value|{
+                                value.bullet_count -= 1;
+                            });
+                        }
+                        
                     }
                     query.modify::<Transform>(key, |transform| {
                         transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 50.0;
@@ -665,12 +709,29 @@ impl ServerState {
     }
 
     fn bullet_to_bullet_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        // for key in query.iter() {
-        //     if query.read::<Bullet>(key).from_enemy
-        // }
+        for key1 in query.iter("Player_Bullet"){
+            if query.read::<Bullet>(key1).from_player{
+                for key2 in query.iter("Enemy_Bullet"){
+                    if query.read::<Bullet>(key2).from_enemy{
+                        let current_player_bullet = query.read::<Transform>(key1).pos;
+                        let current_enemy_bullet = query.read::<Transform>(key2).pos;
+                        if current_player_bullet == current_enemy_bullet{
+                            io.remove_entity(key1);
+                            io.remove_entity(key2);
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    fn player_bullet_to_enemy_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {}
+    fn player_bullet_to_enemy_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        for key1 in query.iter("Player_Bullet"){
+            for key2 in query.iter("Enemy"){
+                // dbg!(query.read::<Transform>(key1).pos == query.read::<Transform>(key2).pos);
+            }
+        }
+    }
 
     fn enemy_bullet_to_player_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {}
 }
