@@ -12,6 +12,8 @@ use obj::obj_lines_to_mesh;
 use serde::{Deserialize, Serialize};
 mod obj;
 
+// use rand::prelude::*;
+
 // Create some constant value for Windows
 const WITDH: f32 = 80.;
 const HEIGHT: f32 = 120.;
@@ -19,6 +21,8 @@ const HEIGHT: f32 = 120.;
 // Create some constant value for Others
 const ENEMY_COUNT: u32 = 3;
 const ENEMY_MAX_BULLET: u32 = 20;
+const ENEMY_SPAWN_TIME: f32 = 2.0;
+const PLAYER_SPAWN_TIME: f32 = 2.0;
 
 // All state associated with client-side behaviour
 #[derive(Default)]
@@ -98,7 +102,22 @@ pub struct Bullet {
 pub struct EnemyCount(u32);
 
 #[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
-pub struct PlayerStatus(bool);
+pub struct EnemyStatus(f32);
+
+#[derive(Component, Serialize, Deserialize, Copy, Clone)]
+pub struct PlayerStatus {
+    pub status: bool,
+    pub dead_time: f32,
+}
+
+impl Default for PlayerStatus {
+    fn default() -> Self {
+        Self {
+            status: true,
+            dead_time: 0.0,
+        }
+    }
+}
 
 // Create ID based on each object's name
 const PLAYER_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Player"));
@@ -242,13 +261,6 @@ impl UserState for ClientState {
             .subscribe::<GamepadState>()
             .build();
 
-        sched
-            .add_system(Self::enemy_random_movement_update)
-            .subscribe::<FrameTime>()
-            .build();
-
-        sched.add_system(Self::enemy_random_fire_update).build();
-
         Self::default()
     }
 }
@@ -318,52 +330,6 @@ impl ClientState {
             io.send(&command);
         }
     }
-
-    fn enemy_random_movement_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
-        let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
-
-        let mut pcg_random_move = Pcg::new();
-        let mut pcg_random_direction = Pcg::new();
-
-        let x = if pcg_random_direction.gen_bool() {
-            pcg_random_move.gen_f32() * 1.
-        } else {
-            pcg_random_move.gen_f32() * -1.
-        };
-
-        let y = if pcg_random_direction.gen_bool() {
-            pcg_random_move.gen_f32() * 1.
-        } else {
-            pcg_random_move.gen_f32() * -1.
-        };
-
-        let direction = Vec3::new(x, y, 0.);
-
-        if direction != Vec3::ZERO {
-            let distance = direction.normalize() * frame_time.delta * 100.0;
-
-            let command = MoveCommand {
-                direction: distance,
-                from_player: false,
-                from_enemy: true,
-            };
-
-            io.send(&command);
-        }
-    }
-
-    fn enemy_random_fire_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
-        let mut pcg_fire = Pcg::new();
-
-        if pcg_fire.gen_bool() {
-            let command = FireCommand {
-                is_fired: false,
-                from_player: false,
-                from_enemy: true,
-            };
-            io.send(&command);
-        }
-    }
 }
 
 // All state associated with server-side behaviour
@@ -372,11 +338,15 @@ struct ServerState;
 impl UserState for ServerState {
     // Implement a constructor
     fn new(io: &mut EngineIo, sched: &mut EngineSchedule<Self>) -> Self {
-        io.create_entity().add_component(PlayerStatus(true)).build();
+        io.create_entity()
+            .add_component(PlayerStatus::default())
+            .build();
 
         io.create_entity()
             .add_component(EnemyCount(ENEMY_COUNT))
             .build();
+
+        io.create_entity().add_component(EnemyStatus(0.0)).build();
 
         // Create Player with components
         io.create_entity()
@@ -412,6 +382,7 @@ impl UserState for ServerState {
 
         sched
             .add_system(Self::spawn_player)
+            .subscribe::<FrameTime>()
             .query("Player")
             .intersect::<PlayerStatus>(Access::Write)
             .qcommit()
@@ -419,8 +390,12 @@ impl UserState for ServerState {
 
         sched
             .add_system(Self::spawn_enemy)
+            .subscribe::<FrameTime>()
             .query("Enemy")
             .intersect::<EnemyCount>(Access::Write)
+            .qcommit()
+            .query("Enemy_Status")
+            .intersect::<EnemyStatus>(Access::Write)
             .qcommit()
             .build();
 
@@ -435,7 +410,7 @@ impl UserState for ServerState {
 
         sched
             .add_system(Self::enemy_movement_update)
-            .subscribe::<MoveCommand>()
+            .subscribe::<FrameTime>()
             .query("Enemy_Movement")
             .intersect::<Transform>(Access::Write)
             .intersect::<Enemy>(Access::Write)
@@ -461,7 +436,6 @@ impl UserState for ServerState {
 
         sched
             .add_system(Self::enemy_fire_update)
-            .subscribe::<FireCommand>()
             .query("Enemy_Fire_Input")
             .intersect::<Enemy>(Access::Write)
             .qcommit()
@@ -530,40 +504,72 @@ impl UserState for ServerState {
 
 impl ServerState {
     fn spawn_player(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
+
         for key in query.iter("Player") {
-            if !(query.read::<PlayerStatus>(key).0) {
-                io.create_entity()
-                    .add_component(
-                        Transform::default()
-                            .with_position(Vec3::new(0.0, -50.0, 0.0))
-                            .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
-                    )
-                    .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
-                    .add_component(Player::default())
-                    .add_component(Synchronized)
-                    .build();
-                io.remove_entity(key);
-                io.create_entity().add_component(PlayerStatus(true)).build();
+            if !(query.read::<PlayerStatus>(key).status) {
+                let mut dead_time = query.read::<PlayerStatus>(key).dead_time;
+                if dead_time == 0.0 {
+                    dead_time = frame_time.time;
+                }
+                if dead_time + PLAYER_SPAWN_TIME < frame_time.time {
+                    io.create_entity()
+                        .add_component(
+                            Transform::default()
+                                .with_position(Vec3::new(0.0, -50.0, 0.0))
+                                .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                        )
+                        .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
+                        .add_component(Player::default())
+                        .add_component(Synchronized)
+                        .build();
+                    io.remove_entity(key);
+                    io.create_entity()
+                        .add_component(PlayerStatus::default())
+                        .build();
+                } else {
+                    query.modify::<PlayerStatus>(key, |value| {
+                        value.dead_time = dead_time;
+                    })
+                }
             }
         }
     }
 
     fn spawn_enemy(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
+
         for key in query.iter("Enemy") {
             if query.read::<EnemyCount>(key).0 < ENEMY_COUNT {
-                io.create_entity()
-                    .add_component(
-                        Transform::default()
-                            .with_position(Vec3::new(0.0, 50.0, 0.0))
-                            .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
-                    )
-                    .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
-                    .add_component(Synchronized)
-                    .add_component(Enemy::default())
-                    .build();
-                query.modify::<EnemyCount>(key, |value| {
-                    value.0 += 1;
-                })
+                for key2 in query.iter("Enemy_Status") {
+                    let mut dead_time = query.read::<EnemyStatus>(key2).0;
+
+                    if dead_time == 0.0 {
+                        dead_time = frame_time.time;
+                    }
+
+                    if dead_time + ENEMY_SPAWN_TIME < frame_time.time {
+                        io.create_entity()
+                            .add_component(
+                                Transform::default()
+                                    .with_position(Vec3::new(0.0, 50.0, 0.0))
+                                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                            )
+                            .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
+                            .add_component(Synchronized)
+                            .add_component(Enemy::default())
+                            .build();
+                        io.remove_entity(key2);
+                        io.create_entity().add_component(EnemyStatus(0.0)).build();
+                        query.modify::<EnemyCount>(key, |value| {
+                            value.0 += 1;
+                        })
+                    } else {
+                        query.modify::<EnemyStatus>(key2, |value| {
+                            value.0 = dead_time;
+                        })
+                    }
+                }
             }
         }
     }
@@ -596,29 +602,45 @@ impl ServerState {
     }
 
     fn enemy_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        for enemy_movement in io.inbox::<MoveCommand>() {
-            if enemy_movement.from_enemy {
-                for key in query.iter("Enemy_Movement") {
-                    let x_limit = WITDH / 2.0;
-                    let y_upper_limit = HEIGHT / 2.;
-                    let y_limit = HEIGHT / 5.;
-                    let current_position = query.read::<Enemy>(key).current_position;
+        for key in query.iter("Enemy_Movement") {
+            let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
-                    if (current_position.x + enemy_movement.direction.x - 3. < -x_limit)
-                        || (current_position.x + enemy_movement.direction.x + 3. > x_limit)
-                        || (current_position.y + enemy_movement.direction.y >= y_upper_limit)
-                        || (current_position.y + enemy_movement.direction.y < y_limit)
-                    {
-                        return;
-                    }
-                    query.modify::<Transform>(key, |transform| {
-                        transform.pos += enemy_movement.direction;
-                    });
-                    query.modify::<Enemy>(key, |enemy| {
-                        enemy.current_position += enemy_movement.direction;
-                    });
-                }
+            let mut pcg_random_move = Pcg::new();
+            let mut pcg_random_direction = Pcg::new();
+
+            let x = if pcg_random_direction.gen_bool() {
+                pcg_random_move.gen_f32() * 1.
+            } else {
+                pcg_random_move.gen_f32() * -1.
+            };
+
+            let y = if pcg_random_direction.gen_bool() {
+                pcg_random_move.gen_f32() * 1.
+            } else {
+                pcg_random_move.gen_f32() * -1.
+            };
+
+            let speed = Vec3::new(x, y, 0.);
+
+            let direction = speed.normalize() * frame_time.delta * 100.;
+            let x_limit = WITDH / 2.0;
+            let y_upper_limit = HEIGHT / 2.;
+            let y_limit = HEIGHT / 5.;
+            let current_position = query.read::<Enemy>(key).current_position;
+
+            if (current_position.x + direction.x - 3. < -x_limit)
+                || (current_position.x + direction.x + 3. > x_limit)
+                || (current_position.y + direction.y >= y_upper_limit)
+                || (current_position.y + direction.y < y_limit)
+            {
+                return;
             }
+            query.modify::<Transform>(key, |transform| {
+                transform.pos += direction;
+            });
+            query.modify::<Enemy>(key, |enemy| {
+                enemy.current_position += direction;
+            });
         }
     }
 
@@ -674,27 +696,27 @@ impl ServerState {
     }
 
     fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        for enemy_fire in io.inbox().collect::<Vec<FireCommand>>() {
-            if enemy_fire.from_enemy {
-                for key in query.iter("Enemy_Fire_Input") {
-                    if query.read::<Enemy>(key).bullet_count < ENEMY_MAX_BULLET {
-                        query.modify::<Enemy>(key, |value| {
-                            value.bullet_count += 1;
-                        });
-                        io.create_entity()
-                            .add_component(
-                                Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
-                            )
-                            .add_component(Synchronized)
-                            .add_component(Bullet {
-                                from_enemy: true,
-                                from_player: false,
-                            })
-                            .add_component(Transform::default().with_position(
-                                query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.0),
-                            ))
-                            .build();
-                    }
+        let mut pcg_fire = Pcg::new();
+
+        for key in query.iter("Enemy_Fire_Input") {
+            if pcg_fire.gen_bool() {
+                if query.read::<Enemy>(key).bullet_count < ENEMY_MAX_BULLET {
+                    query.modify::<Enemy>(key, |value| {
+                        value.bullet_count += 1;
+                    });
+                    io.create_entity()
+                        .add_component(
+                            Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
+                        )
+                        .add_component(Synchronized)
+                        .add_component(Bullet {
+                            from_enemy: true,
+                            from_player: false,
+                        })
+                        .add_component(Transform::default().with_position(
+                            query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.),
+                        ))
+                        .build();
                 }
             }
         }
@@ -806,7 +828,7 @@ impl ServerState {
                         io.remove_entity(key2);
                         for key3 in query.iter("Player_Status_Update") {
                             query.modify::<PlayerStatus>(key3, |value| {
-                                value.0 = false;
+                                value.status = false;
                             });
                         }
                     }
