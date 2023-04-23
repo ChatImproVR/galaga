@@ -18,11 +18,17 @@ mod obj;
 const WITDH: f32 = 80.;
 const HEIGHT: f32 = 120.;
 
-// Create some constant value for Others
-const ENEMY_COUNT: u32 = 3;
-const ENEMY_MAX_BULLET: u32 = 20;
-const ENEMY_SPAWN_TIME: f32 = 2.0;
-const PLAYER_SPAWN_TIME: f32 = 2.0;
+// Create some constant values for Enemy
+const ENEMY_COUNT: u32 = 2;
+const ENEMY_MAX_BULLET: u32 = 10;
+const ENEMY_SPAWN_TIME: f32 = 0.5;
+const ENEMY_BULLET_SPEED: f32 = 100.;
+const ENEMY_SPEED: f32 = 50.;
+
+// Create some constant values for Player
+const PLAYER_SPAWN_TIME: f32 = 3.0;
+const PLAYER_BULLET_SPEED: f32 = 100.;
+const PLAYER_SPEED: f32 = 100.;
 
 // All state associated with client-side behaviour
 #[derive(Default)]
@@ -67,22 +73,6 @@ pub struct Enemy {
     pub bullet_count: u32,
 }
 
-impl Enemy {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn update_bullet_count(mut self, count: u32) -> Self {
-        self.bullet_count = count;
-        self
-    }
-
-    pub fn decrease_one_bullet_count(mut self) -> Self {
-        self.bullet_count -= 1;
-        self
-    }
-}
-
 impl Default for Enemy {
     fn default() -> Self {
         Self {
@@ -92,10 +82,21 @@ impl Default for Enemy {
     }
 }
 
-#[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
+#[derive(Component, Serialize, Deserialize, Copy, Clone)]
 pub struct Bullet {
     from_player: bool,
     from_enemy: bool,
+    entity_id: EntityId,
+}
+
+impl Default for Bullet {
+    fn default() -> Self {
+        Self {
+            from_player: false,
+            from_enemy: false,
+            entity_id: EntityId(0),
+        }
+    }
 }
 
 #[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
@@ -292,7 +293,7 @@ impl ClientState {
             }
 
             if direction != Vec3::ZERO {
-                let distance = direction.normalize() * frame_time.delta * 100.0;
+                let distance = direction.normalize() * frame_time.delta * PLAYER_SPEED;
 
                 let command = MoveCommand {
                     direction: distance,
@@ -445,21 +446,6 @@ impl UserState for ServerState {
             .add_system(Self::enemy_bullet_movement_update)
             .subscribe::<FrameTime>()
             .query("Enemy_Bullet_Movement")
-            .intersect::<Transform>(Access::Write)
-            .intersect::<Bullet>(Access::Write)
-            .qcommit()
-            .query("Enemy_Bullet_Count_Update")
-            .intersect::<Enemy>(Access::Write)
-            .qcommit()
-            .build();
-
-        sched
-            .add_system(Self::bullet_to_bullet_collision)
-            .query("Enemy_Bullet")
-            .intersect::<Transform>(Access::Write)
-            .intersect::<Bullet>(Access::Write)
-            .qcommit()
-            .query("Player_Bullet")
             .intersect::<Transform>(Access::Write)
             .intersect::<Bullet>(Access::Write)
             .qcommit()
@@ -622,7 +608,7 @@ impl ServerState {
 
             let speed = Vec3::new(x, y, 0.);
 
-            let direction = speed.normalize() * frame_time.delta * 100.;
+            let direction = speed.normalize() * frame_time.delta * ENEMY_SPEED;
             let x_limit = WITDH / 2.0;
             let y_upper_limit = HEIGHT / 2.;
             let y_limit = HEIGHT / 5.;
@@ -656,6 +642,7 @@ impl ServerState {
                         .add_component(Bullet {
                             from_enemy: false,
                             from_player: true,
+                            entity_id: key,
                         })
                         .add_component(Transform::default().with_position(
                             query.read::<Player>(key).current_position + Vec3::new(-1.5, 1.5, 0.0),
@@ -670,6 +657,7 @@ impl ServerState {
                         .add_component(Bullet {
                             from_enemy: false,
                             from_player: true,
+                            entity_id: key,
                         })
                         .add_component(Transform::default().with_position(
                             query.read::<Player>(key).current_position + Vec3::new(1.5, 1.5, 0.0),
@@ -681,16 +669,17 @@ impl ServerState {
     }
 
     fn player_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        if let Some(frame_time) = io.inbox_first::<FrameTime>() {
-            for key in query.iter("Player_Bullet_Movement") {
-                if query.read::<Bullet>(key).from_player {
-                    if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
-                        io.remove_entity(key);
-                    }
-                    query.modify::<Transform>(key, |transform| {
-                        transform.pos += Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * 100.0;
-                    });
+        let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
+
+        for key in query.iter("Player_Bullet_Movement") {
+            if query.read::<Bullet>(key).from_player {
+                if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
+                    io.remove_entity(key);
                 }
+                query.modify::<Transform>(key, |transform| {
+                    transform.pos +=
+                        Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * PLAYER_BULLET_SPEED;
+                });
             }
         }
     }
@@ -700,7 +689,10 @@ impl ServerState {
 
         for key in query.iter("Enemy_Fire_Input") {
             if pcg_fire.gen_bool() {
+                dbg!("triggered part 1");
+                dbg!(query.read::<Enemy>(key).bullet_count);
                 if query.read::<Enemy>(key).bullet_count < ENEMY_MAX_BULLET {
+                    dbg!("triggered part 2");
                     query.modify::<Enemy>(key, |value| {
                         value.bullet_count += 1;
                     });
@@ -712,6 +704,7 @@ impl ServerState {
                         .add_component(Bullet {
                             from_enemy: true,
                             from_player: false,
+                            entity_id: key,
                         })
                         .add_component(Transform::default().with_position(
                             query.read::<Enemy>(key).current_position + Vec3::new(0., 1.5, 0.),
@@ -727,50 +720,18 @@ impl ServerState {
             for key in query.iter("Enemy_Bullet_Movement") {
                 if query.read::<Bullet>(key).from_enemy {
                     if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
+                        query.modify::<Enemy>(query.read::<Bullet>(key).entity_id, |value| {
+                            value.bullet_count -= 1;
+                        });
                         io.remove_entity(key);
-                        for key2 in query.iter("Enemy_Bullet_Count_Update") {
-                            query.modify::<Enemy>(key2, |value| {
-                                value.bullet_count -= 1;
-                            });
-                        }
                     }
                     query.modify::<Transform>(key, |transform| {
-                        transform.pos += Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * 50.0;
+                        transform.pos +=
+                            Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * ENEMY_BULLET_SPEED;
                     });
                 }
             }
         }
-    }
-
-    fn bullet_to_bullet_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        // for key1 in query.iter("Player_Bullet") {
-        //     if query.read::<Bullet>(key1).from_player {
-        //         for key2 in query.iter("Enemy_Bullet") {
-        //             if query.read::<Bullet>(key2).from_enemy {
-        //                 let current_player_bullet = query.read::<Transform>(key1).pos;
-        //                 let current_enemy_bullet = query.read::<Transform>(key2).pos;
-        //                 let bullet_size = 0.5;
-
-        //                 if collision_detection(
-        //                     current_player_bullet.x,
-        //                     current_player_bullet.y,
-        //                     bullet_size,
-        //                     current_enemy_bullet.x,
-        //                     current_enemy_bullet.y,
-        //                     bullet_size,
-        //                 ) {
-        //                     io.remove_entity(key1);
-        //                     io.remove_entity(key2);
-        //                     for key3 in query.iter("Enemy_Bullet_Count_Update") {
-        //                         query.modify::<Enemy>(key3, |value| {
-        //                             value.bullet_count -= 1;
-        //                         });
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
     }
 
     fn player_bullet_to_enemy_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
@@ -778,20 +739,19 @@ impl ServerState {
         for key1 in query.iter("Player_Bullet") {
             if query.read::<Bullet>(key1).from_player {
                 for key2 in query.iter("Enemy") {
-                    let buffer = 3.;
                     let bullet_size = 0.5;
                     let enemy_size = 3.;
                     let current_player_bullet = query.read::<Transform>(key1).pos;
                     let current_enemy = query.read::<Transform>(key2).pos;
 
-                    if (collision_detection(
+                    if collision_detection(
                         current_player_bullet.x,
                         current_player_bullet.y,
                         bullet_size,
                         current_enemy.x,
                         current_enemy.y,
                         enemy_size,
-                    )) {
+                    ) {
                         io.remove_entity(key1);
                         io.remove_entity(key2);
                         for key3 in query.iter("Enemy_Count_Update") {
@@ -806,11 +766,9 @@ impl ServerState {
     }
 
     fn enemy_bullet_to_player_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        // Size is 3 pixel sqaure
         for key1 in query.iter("Enemy_Bullet") {
             if query.read::<Bullet>(key1).from_enemy {
                 for key2 in query.iter("Player") {
-                    let buffer = 3.;
                     let bullet_size = 0.5;
                     let enemy_size = 3.;
                     let current_enemy_bullet = query.read::<Transform>(key1).pos;
@@ -860,7 +818,4 @@ fn collision_detection(
 // Calls new() for the appropriate state.
 make_app_state!(ClientState, ServerState);
 
-// Enemy Random firerate (make it less true on fire)
-// Enemy bullet collision and player bullet collision
 // Score (if possible)
-// Tetris next?
