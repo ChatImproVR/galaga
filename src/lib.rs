@@ -526,6 +526,7 @@ impl ServerState {
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
         for key in query.iter("Enemy") {
+            dbg!(query.read::<EnemyCount>(key).0);
             if query.read::<EnemyCount>(key).0 < ENEMY_COUNT {
                 for key2 in query.iter("Enemy_Status") {
                     let mut dead_time = query.read::<EnemyStatus>(key2).0;
@@ -689,10 +690,7 @@ impl ServerState {
 
         for key in query.iter("Enemy_Fire_Input") {
             if pcg_fire.gen_bool() {
-                dbg!("triggered part 1");
-                dbg!(query.read::<Enemy>(key).bullet_count);
                 if query.read::<Enemy>(key).bullet_count < ENEMY_MAX_BULLET {
-                    dbg!("triggered part 2");
                     query.modify::<Enemy>(key, |value| {
                         value.bullet_count += 1;
                     });
@@ -720,9 +718,12 @@ impl ServerState {
             for key in query.iter("Enemy_Bullet_Movement") {
                 if query.read::<Bullet>(key).from_enemy {
                     if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
-                        query.modify::<Enemy>(query.read::<Bullet>(key).entity_id, |value| {
-                            value.bullet_count -= 1;
-                        });
+                        // If that enemy key exists in the game or not
+                        if query.iter("Enemy_Bullet_Count_Update").any(|id| id == query.read::<Bullet>(key).entity_id){
+                            query.modify::<Enemy>(query.read::<Bullet>(key).entity_id, |value| {
+                                value.bullet_count -= 1;
+                            });
+                        }
                         io.remove_entity(key);
                     }
                     query.modify::<Transform>(key, |transform| {
