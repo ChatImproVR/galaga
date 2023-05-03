@@ -100,9 +100,6 @@ impl Default for Bullet {
 }
 
 #[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
-pub struct EnemyCount(u32);
-
-#[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
 pub struct EnemyStatus(f32);
 
 #[derive(Component, Serialize, Deserialize, Copy, Clone)]
@@ -343,10 +340,6 @@ impl UserState for ServerState {
             .add_component(PlayerStatus::default())
             .build();
 
-        io.create_entity()
-            .add_component(EnemyCount(ENEMY_COUNT))
-            .build();
-
         io.create_entity().add_component(EnemyStatus(0.0)).build();
 
         // Create Player with components
@@ -371,7 +364,6 @@ impl UserState for ServerState {
             .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
             .add_component(Synchronized)
             .add_component(Enemy::default())
-            .add_component(EnemyCount(1))
             .build();
 
         // Create the Window
@@ -393,7 +385,10 @@ impl UserState for ServerState {
         sched
             .add_system(Self::spawn_enemy)
             .subscribe::<FrameTime>()
-            .query("Enemy", Query::new().intersect::<EnemyCount>(Access::Write))
+            .query(
+                "Enemy_Count",
+                Query::new().intersect::<Enemy>(Access::Write),
+            )
             .query(
                 "Enemy_Status",
                 Query::new().intersect::<EnemyStatus>(Access::Write),
@@ -479,10 +474,6 @@ impl UserState for ServerState {
                     .intersect::<Enemy>(Access::Write)
                     .intersect::<Transform>(Access::Read),
             )
-            .query(
-                "Enemy_Count_Update",
-                Query::new().intersect::<EnemyCount>(Access::Write),
-            )
             .build();
 
         sched
@@ -546,37 +537,31 @@ impl ServerState {
     fn spawn_enemy(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
-        for key in query.iter("Enemy") {
-            dbg!(query.read::<EnemyCount>(key).0);
-            if query.read::<EnemyCount>(key).0 < ENEMY_COUNT {
-                for key2 in query.iter("Enemy_Status") {
-                    let mut dead_time = query.read::<EnemyStatus>(key2).0;
+        if (query.iter("Enemy_Count").count() as u32) < ENEMY_COUNT {
+            for key2 in query.iter("Enemy_Status") {
+                let mut dead_time = query.read::<EnemyStatus>(key2).0;
 
-                    if dead_time == 0.0 {
-                        dead_time = frame_time.time;
-                    }
+                if dead_time == 0.0 {
+                    dead_time = frame_time.time;
+                }
 
-                    if dead_time + ENEMY_SPAWN_TIME < frame_time.time {
-                        io.create_entity()
-                            .add_component(
-                                Transform::default()
-                                    .with_position(Vec3::new(0.0, 50.0, 0.0))
-                                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
-                            )
-                            .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
-                            .add_component(Synchronized)
-                            .add_component(Enemy::default())
-                            .build();
-                        io.remove_entity(key2);
-                        io.create_entity().add_component(EnemyStatus(0.0)).build();
-                        query.modify::<EnemyCount>(key, |value| {
-                            value.0 += 1;
-                        })
-                    } else {
-                        query.modify::<EnemyStatus>(key2, |value| {
-                            value.0 = dead_time;
-                        })
-                    }
+                if dead_time + ENEMY_SPAWN_TIME < frame_time.time {
+                    io.create_entity()
+                        .add_component(
+                            Transform::default()
+                                .with_position(Vec3::new(0.0, 50.0, 0.0))
+                                .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                        )
+                        .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
+                        .add_component(Synchronized)
+                        .add_component(Enemy::default())
+                        .build();
+                    io.remove_entity(key2);
+                    io.create_entity().add_component(EnemyStatus(0.0)).build();
+                } else {
+                    query.modify::<EnemyStatus>(key2, |value| {
+                        value.0 = dead_time;
+                    })
                 }
             }
         }
@@ -695,7 +680,7 @@ impl ServerState {
 
         for key in query.iter("Player_Bullet_Movement") {
             if query.read::<Bullet>(key).from_player {
-                if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 5. {
+                if query.read::<Transform>(key).pos.y > HEIGHT / 2. - 2.5 {
                     io.remove_entity(key);
                 }
                 query.modify::<Transform>(key, |transform| {
@@ -738,7 +723,7 @@ impl ServerState {
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
             for key in query.iter("Enemy_Bullet_Movement") {
                 if query.read::<Bullet>(key).from_enemy {
-                    if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
+                    if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 2.5 {
                         // If that enemy key exists in the game or not
                         if query
                             .iter("Enemy_Bullet_Count_Update")
@@ -779,11 +764,6 @@ impl ServerState {
                     ) {
                         io.remove_entity(key1);
                         io.remove_entity(key2);
-                        for key3 in query.iter("Enemy_Count_Update") {
-                            query.modify::<EnemyCount>(key3, |value| {
-                                value.0 -= 1;
-                            });
-                        }
                     }
                 }
             }
