@@ -10,3 +10,4 @@ crate-type = ["cdylib"]
 cimvr_common = { path = "../iteration0/common/" }
 cimvr_engine_interface  = { path = "../iteration0/engine_interface" }
 serde = { version = "1", features = ["derive"] }
+obj_reader = {path = "../iteration0/obj_loader"}

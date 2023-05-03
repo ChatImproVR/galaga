@@ -8,11 +8,8 @@ use cimvr_common::{
     utils::input_helper::InputHelper,
     Transform,
 };
-use obj::obj_lines_to_mesh;
+use obj_reader::obj::obj_lines_to_mesh;
 use serde::{Deserialize, Serialize};
-mod obj;
-
-// use rand::prelude::*;
 
 // Create some constant value for Windows
 const WITDH: f32 = 80.;
