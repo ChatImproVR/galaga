@@ -384,104 +384,125 @@ impl UserState for ServerState {
         sched
             .add_system(Self::spawn_player)
             .subscribe::<FrameTime>()
-            .query("Player")
-            .intersect::<PlayerStatus>(Access::Write)
-            .qcommit()
+            .query(
+                "Player",
+                Query::new().intersect::<PlayerStatus>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::spawn_enemy)
             .subscribe::<FrameTime>()
-            .query("Enemy")
-            .intersect::<EnemyCount>(Access::Write)
-            .qcommit()
-            .query("Enemy_Status")
-            .intersect::<EnemyStatus>(Access::Write)
-            .qcommit()
+            .query("Enemy", Query::new().intersect::<EnemyCount>(Access::Write))
+            .query(
+                "Enemy_Status",
+                Query::new().intersect::<EnemyStatus>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::player_movement_update)
             .subscribe::<MoveCommand>()
-            .query("Player_Movement")
-            .intersect::<Transform>(Access::Write)
-            .intersect::<Player>(Access::Write)
-            .qcommit()
+            .query(
+                "Player_Movement",
+                Query::new()
+                    .intersect::<Transform>(Access::Write)
+                    .intersect::<Player>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::enemy_movement_update)
             .subscribe::<FrameTime>()
-            .query("Enemy_Movement")
-            .intersect::<Transform>(Access::Write)
-            .intersect::<Enemy>(Access::Write)
-            .qcommit()
+            .query(
+                "Enemy_Movement",
+                Query::new()
+                    .intersect::<Transform>(Access::Write)
+                    .intersect::<Enemy>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::player_fire_update)
             .subscribe::<FireCommand>()
-            .query("Player_Fire_Input")
-            .intersect::<Player>(Access::Read)
-            .qcommit()
+            .query(
+                "Player_Fire_Input",
+                Query::new().intersect::<Player>(Access::Read),
+            )
             .build();
 
         sched
             .add_system(Self::player_bullet_movement_update)
             .subscribe::<FrameTime>()
-            .query("Player_Bullet_Movement")
-            .intersect::<Transform>(Access::Write)
-            .intersect::<Bullet>(Access::Write)
-            .qcommit()
+            .query(
+                "Player_Bullet_Movement",
+                Query::new()
+                    .intersect::<Transform>(Access::Write)
+                    .intersect::<Bullet>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::enemy_fire_update)
-            .query("Enemy_Fire_Input")
-            .intersect::<Enemy>(Access::Write)
-            .qcommit()
+            .query(
+                "Enemy_Fire_Input",
+                Query::new().intersect::<Enemy>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::enemy_bullet_movement_update)
             .subscribe::<FrameTime>()
-            .query("Enemy_Bullet_Movement")
-            .intersect::<Transform>(Access::Write)
-            .intersect::<Bullet>(Access::Write)
-            .qcommit()
-            .query("Enemy_Bullet_Count_Update")
-            .intersect::<Enemy>(Access::Write)
-            .qcommit()
+            .query(
+                "Enemy_Bullet_Movement",
+                Query::new()
+                    .intersect::<Transform>(Access::Write)
+                    .intersect::<Bullet>(Access::Write),
+            )
+            .query(
+                "Enemy_Bullet_Count_Update",
+                Query::new().intersect::<Enemy>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::player_bullet_to_enemy_collision)
-            .query("Player_Bullet")
-            .intersect::<Transform>(Access::Read)
-            .intersect::<Bullet>(Access::Write)
-            .qcommit()
-            .query("Enemy")
-            .intersect::<Enemy>(Access::Write)
-            .intersect::<Transform>(Access::Read)
-            .qcommit()
-            .query("Enemy_Count_Update")
-            .intersect::<EnemyCount>(Access::Write)
-            .qcommit()
+            .query(
+                "Player_Bullet",
+                Query::new()
+                    .intersect::<Transform>(Access::Read)
+                    .intersect::<Bullet>(Access::Write),
+            )
+            .query(
+                "Enemy",
+                Query::new()
+                    .intersect::<Enemy>(Access::Write)
+                    .intersect::<Transform>(Access::Read),
+            )
+            .query(
+                "Enemy_Count_Update",
+                Query::new().intersect::<EnemyCount>(Access::Write),
+            )
             .build();
 
         sched
             .add_system(Self::enemy_bullet_to_player_collision)
-            .query("Enemy_Bullet")
-            .intersect::<Transform>(Access::Read)
-            .intersect::<Bullet>(Access::Write)
-            .qcommit()
-            .query("Player")
-            .intersect::<Player>(Access::Write)
-            .intersect::<Transform>(Access::Read)
-            .qcommit()
-            .query("Player_Status_Update")
-            .intersect::<PlayerStatus>(Access::Write)
-            .qcommit()
+            .query(
+                "Enemy_Bullet",
+                Query::new()
+                    .intersect::<Transform>(Access::Read)
+                    .intersect::<Bullet>(Access::Write),
+            )
+            .query(
+                "Player",
+                Query::new()
+                    .intersect::<Player>(Access::Write)
+                    .intersect::<Transform>(Access::Read),
+            )
+            .query(
+                "Player_Status_Update",
+                Query::new().intersect::<PlayerStatus>(Access::Write),
+            )
             .build();
 
         Self
@@ -719,7 +740,10 @@ impl ServerState {
                 if query.read::<Bullet>(key).from_enemy {
                     if query.read::<Transform>(key).pos.y < -HEIGHT / 2. + 5. {
                         // If that enemy key exists in the game or not
-                        if query.iter("Enemy_Bullet_Count_Update").any(|id| id == query.read::<Bullet>(key).entity_id){
+                        if query
+                            .iter("Enemy_Bullet_Count_Update")
+                            .any(|id| id == query.read::<Bullet>(key).entity_id)
+                        {
                             query.modify::<Enemy>(query.read::<Bullet>(key).entity_id, |value| {
                                 value.bullet_count -= 1;
                             });
