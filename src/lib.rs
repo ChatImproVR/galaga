@@ -438,6 +438,7 @@ impl UserState for ServerState {
             .add_component(Render::new(WINDOW_SIZE_HANDLE).primitive(Primitive::Lines))
             // Add the synchronized component to synchronize the entity with the client side
             .add_component(Synchronized)
+            // Build the entity
             .build();
 
         sched
