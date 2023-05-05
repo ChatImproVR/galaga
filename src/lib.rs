@@ -39,13 +39,9 @@ struct ClientState {
 struct MoveCommand(Vec3);
 
 // Add fire command
-#[derive(Message, Serialize, Deserialize, Clone, Copy)]
+#[derive(Message, Serialize, Deserialize, Clone, Copy, Debug)]
 #[locality("Remote")]
-struct FireCommand {
-    pub is_fired: bool,
-    pub from_player: bool,
-    pub from_enemy: bool,
-}
+struct FireCommand(bool);
 
 // Add Player Component
 #[derive(Component, Serialize, Deserialize, Copy, Clone)]
@@ -342,28 +338,28 @@ impl ClientState {
         }
     }
 
+    // Send the player fire input to the server side
     fn player_input_fire_update(&mut self, io: &mut EngineIo, _query: &mut QueryResult) {
+        // Read the input events from the keyboard
         self.input.handle_input_events(io);
 
+        // Read the gamepad state from the engine
         if let Some(GamepadState(gamepads)) = io.inbox_first() {
+            // If gamepad input was received
             if let Some(gamepad) = gamepads.into_iter().next() {
+                // Check if the East side button on the right side of the controller was triggered
                 if gamepad.buttons[&Button::East] {
-                    let command = FireCommand {
-                        is_fired: true,
-                        from_player: true,
-                        from_enemy: false,
-                    };
+                    // Create the Fire command
+                    let command = FireCommand(true);
+                    // Send the command to the server side
                     io.send(&command);
                 }
             }
         }
 
+        // If the keyboard input was received and the key Space was pressed, send the fire command to the server side
         if self.input.key_pressed(KeyCode::Space) {
-            let command = FireCommand {
-                is_fired: true,
-                from_player: true,
-                from_enemy: false,
-            };
+            let command = FireCommand(true);
             io.send(&command);
         }
     }
@@ -372,45 +368,75 @@ impl ClientState {
 // All state associated with server-side behaviour
 struct ServerState;
 
+// Implement server only side functions that will update on the server side
 impl UserState for ServerState {
     // Implement a constructor
     fn new(io: &mut EngineIo, sched: &mut EngineSchedule<Self>) -> Self {
+        // Create a player status entity (not player entity)
         io.create_entity()
+            // Add the player status component with the default values
             .add_component(PlayerStatus::default())
+            // Build the entity
             .build();
 
+        // Create an enemy status entity (not enemy entity)
         io.create_entity().add_component(EnemyStatus(0.0)).build();
 
-        io.create_entity().add_component(Score(0)).build();
-
-        // Create Player with components
+        // Create a score entity
         io.create_entity()
+            // Add the score component with the initial score of 0
+            .add_component(Score(0))
+            // Build the entity
+            .build();
+
+        // Create Player entity with components
+        io.create_entity()
+            // Add the transform component for movement
             .add_component(
+                // Add the default transform component
                 Transform::default()
+                    // Set the bottom middle of the screen as the initial position
                     .with_position(Vec3::new(0.0, -50.0, 0.0))
+                    // Set the initial rotation to be facing towards to the player based on the camera angle (no needed if you create the object facing a different direction)
                     .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
             )
+            // Add the render component to draw the player with lines
             .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
+            // Add the player component as default
             .add_component(Player::default())
+            // Add the synchronized component to synchronize the entity with the client side
             .add_component(Synchronized)
+            // Build the entity
             .build();
 
         // Create Enemy with components
         io.create_entity()
+            // Add the transform component for movement, firing, and displaying
             .add_component(
+                // Add the default transform component
                 Transform::default()
+                    // Set the top middle of the screen as the initial position
                     .with_position(Vec3::new(0.0, 50.0, 0.0))
+                    // Set the initial rotation to be facing towards to the player based on the camera angle
+                    // (no needed if you create the object facing a different direction or differen angle rotation)
                     .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
             )
+            // Add the render component to draw the enemy with lines
             .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
+            // Add the synchronized component to synchronize the entity with the client side
             .add_component(Synchronized)
+            // Add the enemy component as default
             .add_component(Enemy::default())
+            // Build the entity
             .build();
 
-        // Create the Window
+        // Create the Window entity with components
         io.create_entity()
+            // Add the transform component for displaying the window
             .add_component(Transform::default())
+            // Add the render component to draw the window with lines
             .add_component(Render::new(WINDOW_SIZE_HANDLE).primitive(Primitive::Lines))
+            // Add the synchronized component to synchronize the entity with the client side
             .add_component(Synchronized)
             .build();
 
@@ -515,7 +541,10 @@ impl UserState for ServerState {
                     .intersect::<Enemy>(Access::Write)
                     .intersect::<Transform>(Access::Read),
             )
-            .query("Score_Update", Query::new().intersect::<Score>(Access::Write))
+            .query(
+                "Score_Update",
+                Query::new().intersect::<Score>(Access::Write),
+            )
             .build();
 
         sched
@@ -679,41 +708,37 @@ impl ServerState {
     }
 
     fn player_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        for player_fire in io.inbox().collect::<Vec<FireCommand>>() {
-            if player_fire.from_player {
-                for entity in query.iter("Player_Fire_Input") {
-                    io.create_entity()
-                        .add_component(
-                            Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
-                        )
-                        .add_component(Synchronized)
-                        .add_component(Bullet {
-                            from_enemy: false,
-                            from_player: true,
-                            entity_id: entity,
-                        })
-                        .add_component(Transform::default().with_position(
-                            query.read::<Player>(entity).current_position
-                                + Vec3::new(-1.5, 1.5, 0.0),
-                        ))
-                        .build();
+        if let Some(FireCommand(value)) = io.inbox_first() {
+            for entity in query.iter("Player_Fire_Input") {
+                io.create_entity()
+                    .add_component(
+                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
+                    )
+                    .add_component(Synchronized)
+                    .add_component(Bullet {
+                        from_enemy: false,
+                        from_player: true,
+                        entity_id: entity,
+                    })
+                    .add_component(Transform::default().with_position(
+                        query.read::<Player>(entity).current_position + Vec3::new(-1.5, 1.5, 0.0),
+                    ))
+                    .build();
 
-                    io.create_entity()
-                        .add_component(
-                            Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
-                        )
-                        .add_component(Synchronized)
-                        .add_component(Bullet {
-                            from_enemy: false,
-                            from_player: true,
-                            entity_id: entity,
-                        })
-                        .add_component(Transform::default().with_position(
-                            query.read::<Player>(entity).current_position
-                                + Vec3::new(1.5, 1.5, 0.0),
-                        ))
-                        .build();
-                }
+                io.create_entity()
+                    .add_component(
+                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
+                    )
+                    .add_component(Synchronized)
+                    .add_component(Bullet {
+                        from_enemy: false,
+                        from_player: true,
+                        entity_id: entity,
+                    })
+                    .add_component(Transform::default().with_position(
+                        query.read::<Player>(entity).current_position + Vec3::new(1.5, 1.5, 0.0),
+                    ))
+                    .build();
             }
         }
     }
@@ -882,3 +907,4 @@ fn collision_detection(
 make_app_state!(ClientState, ServerState);
 
 // Score (if possible) --> just need to display on the client side
+// Update README file as well
