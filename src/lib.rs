@@ -1,5 +1,7 @@
+// Add libraries from the cimvr_engine_interface crate
 use cimvr_engine_interface::{dbg, make_app_state, pcg::Pcg, pkg_namespace, prelude::*, FrameTime};
 
+// Add libraries from the cimvr_common crate
 use cimvr_common::{
     desktop::{InputEvent, KeyCode},
     gamepad::{Axis, Button, GamepadState},
@@ -8,7 +10,11 @@ use cimvr_common::{
     utils::input_helper::InputHelper,
     Transform,
 };
+
+// Add libraries from the obj_reader crate
 use obj_reader::obj::obj_lines_to_mesh;
+
+// Add libraries from the serde crate
 use serde::{Deserialize, Serialize};
 
 // Create some constant value for Windows
@@ -21,11 +27,16 @@ const ENEMY_MAX_BULLET: u32 = 5;
 const ENEMY_SPAWN_TIME: f32 = 0.5;
 const ENEMY_BULLET_SPEED: f32 = 100.;
 const ENEMY_SPEED: f32 = 50.;
+const ENEMY_SIZE: f32 = 3.; // Because of the obj file, this value is not used (update this value after changing the obj size)
 
 // Create some constant values for Player
 const PLAYER_SPAWN_TIME: f32 = 3.0;
 const PLAYER_BULLET_SPEED: f32 = 100.;
 const PLAYER_SPEED: f32 = 100.;
+const PLAYER_SIZE: f32 = 3.; // Because of the obj file, this value is not used (update this value after changing the obj size)
+
+// Create some constant values for Bullet
+const BULLET_SIZE: f32 = 0.5;
 
 // All state associated with client-side behaviour
 #[derive(Default)]
@@ -33,12 +44,12 @@ struct ClientState {
     input: InputHelper,
 }
 
-// Add movement command
+// Add movement command as message from client to server
 #[derive(Message, Serialize, Deserialize, Clone, Copy)]
 #[locality("Remote")]
 struct MoveCommand(Vec3);
 
-// Add fire command
+// Add fire command as a message from client to server
 #[derive(Message, Serialize, Deserialize, Clone, Copy, Debug)]
 #[locality("Remote")]
 struct FireCommand(bool);
@@ -130,7 +141,7 @@ const WINDOW_SIZE_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Window Si
 
 // Create the Player Mesh --> This is commented out because we are using obj file
 // fn player() -> Mesh {
-//     let size: f32 = 3.;
+//     let size: f32 = PLAYER_SIZE;
 
 //     let vertices = vec![
 //         Vertex::new([-size, -size, 0.0], [0.0, 0.0, 1.0]), // Vertex 0
@@ -146,7 +157,7 @@ const WINDOW_SIZE_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Window Si
 
 // // Create the Enemy Mesh --> This is commented out because we are using obj file
 // fn enemy() -> Mesh {
-//     let size: f32 = 3.;
+//     let size: f32 = ENEMY_SIZE;
 
 //     let vertices = vec![
 //         Vertex::new([-size, -size, 0.0], [1.0, 0.0, 0.0]), // Vertex 0
@@ -162,7 +173,7 @@ const WINDOW_SIZE_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Window Si
 
 // Create Player Bullet Mesh as a sqaure green
 fn player_bullet() -> Mesh {
-    let size: f32 = 0.5;
+    let size: f32 = BULLET_SIZE;
 
     let vertices = vec![
         Vertex::new([-size, -size, 0.0], [0.0, 1.0, 0.0]),
@@ -178,7 +189,7 @@ fn player_bullet() -> Mesh {
 
 // Create Enemy Bullet Mesh as a sqaure red
 fn enemy_bullet() -> Mesh {
-    let size: f32 = 0.5;
+    let size: f32 = BULLET_SIZE;
 
     let vertices = vec![
         Vertex::new([-size, -size, 0.0], [1.0, 0.0, 0.0]),
@@ -441,152 +452,253 @@ impl UserState for ServerState {
             // Build the entity
             .build();
 
+        // Attach Spawn Player Function to the Engine schedule
         sched
+            // Add the spawn player system
             .add_system(Self::spawn_player)
+            // Subscribe to the FrameTime event
             .subscribe::<FrameTime>()
+            // Add the query to the system
             .query(
+                // The query name is "Player"
                 "Player",
+                // The query is fetch all the entities that have the PlayerStatus component with a permission to modify the component
                 Query::new().intersect::<PlayerStatus>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Spawn Enemy Function to the Engine schedule
         sched
+            // Add the spawn enemy system
             .add_system(Self::spawn_enemy)
+            // Subscribe to the FrameTime event
             .subscribe::<FrameTime>()
+            // Add the query to the system
             .query(
+                // The query name is "Enemy_Count"
                 "Enemy_Count",
+                // The query is fetch all the entities that have the Enemy component with a permission to modify the component
                 Query::new().intersect::<Enemy>(Access::Write),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Enemy_Status"
                 "Enemy_Status",
+                // The query is fetch all the entities that have the EnemyStatus component with a permission to modify the component
                 Query::new().intersect::<EnemyStatus>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Player Movement Function to the Engine schedule
         sched
+            // Add the player movement system
             .add_system(Self::player_movement_update)
+            // Subscribe to the MoveCommand event/message
             .subscribe::<MoveCommand>()
+            // Add the query to the system
             .query(
+                // The query name is "Player_Movement"
                 "Player_Movement",
+                // The query is fetch all the entities that have the Transform and Player component with a permission to modify the component
                 Query::new()
                     .intersect::<Transform>(Access::Write)
                     .intersect::<Player>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Enemy Movement Function to the Engine schedule
         sched
+            // Add the enemy movement system
             .add_system(Self::enemy_movement_update)
+            // Subscribe to the FrameTime event
             .subscribe::<FrameTime>()
+            // Add the query to the system
             .query(
+                // The query name is "Enemy_Movement"
                 "Enemy_Movement",
+                // The query is fetch all the entities that have the Transform and Enemy component with a permission to modify the component
                 Query::new()
                     .intersect::<Transform>(Access::Write)
                     .intersect::<Enemy>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Player Fire Function to the Engine schedule
         sched
+            // Add the player fire system
             .add_system(Self::player_fire_update)
+            // Subscribe to the FireCommand event/message
             .subscribe::<FireCommand>()
+            // Add the query to the system
             .query(
+                // The query name is "Player_Fire_Input"
                 "Player_Fire_Input",
+                // The query is fetch all the entities that have the Player component with a permission to only read the component
                 Query::new().intersect::<Player>(Access::Read),
             )
+            // Build that system
             .build();
 
+        // Attach Player Bullet Movement Function to the Engine schedule
         sched
+            // Add the player bullet movement system
             .add_system(Self::player_bullet_movement_update)
+            // Subscribe to the FrameTime event
             .subscribe::<FrameTime>()
+            // Add the query to the system
             .query(
+                // The query name is "Player_Bullet_Movement"
                 "Player_Bullet_Movement",
+                // The query is fetch all the entities that have the Transform and Bullet component with a permission to modify the component
                 Query::new()
                     .intersect::<Transform>(Access::Write)
                     .intersect::<Bullet>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Enemy Fire Function to the Engine schedule
         sched
+            // Add the enemy fire system
             .add_system(Self::enemy_fire_update)
+            // Add the query to the system
             .query(
+                // The query name is "Enemy_Fire_Input"
                 "Enemy_Fire_Input",
+                // The query is fetch all the entities that have the Enemy component with a permission to write the component
                 Query::new().intersect::<Enemy>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Enemy Bullet Movement Function to the Engine schedule
         sched
+            // Add the enemy bullet movement system
             .add_system(Self::enemy_bullet_movement_update)
+            // Subscribe to the FrameTime event
             .subscribe::<FrameTime>()
+            // Add the query to the system
             .query(
+                // The query name is "Enemy_Bullet_Movement"
                 "Enemy_Bullet_Movement",
+                // The query is fetch all the entities that have the Transform and Bullet component with a permission to modify the component
                 Query::new()
                     .intersect::<Transform>(Access::Write)
                     .intersect::<Bullet>(Access::Write),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Enemy_Bullet_Count_Update"
                 "Enemy_Bullet_Count_Update",
+                // The query is fetch all the entities that have the Enemy component with a permission to write the component
                 Query::new().intersect::<Enemy>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Player Bullet to Enemy Collision Function to the Engine schedule
         sched
+            // Add the player bullet to enemy collision system
             .add_system(Self::player_bullet_to_enemy_collision)
+            // Add the query to the system
             .query(
+                // The query name is "Player_Bullet"
                 "Player_Bullet",
+                // The query is fetch all the entities that have the Transform and Bullet component
+                // The Transform will only have the permission to read whereas the Bullet will have the permission to write
                 Query::new()
                     .intersect::<Transform>(Access::Read)
                     .intersect::<Bullet>(Access::Write),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Enemy"
                 "Enemy",
+                // The query is fetch all the entities that have the Enemy and Transfrom component
+                // The Enemy will have the permission to write whereas the Transform will only have the permission to read
                 Query::new()
                     .intersect::<Enemy>(Access::Write)
                     .intersect::<Transform>(Access::Read),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Score_Update"
                 "Score_Update",
+                // The query is fetch all the entities that have the Score component with a permission to write the component
                 Query::new().intersect::<Score>(Access::Write),
             )
+            // Build that system
             .build();
 
+        // Attach Enemy Bullet to Player Collision Function to the Engine schedule
         sched
+            // Add the enemy bullet to player collision system
             .add_system(Self::enemy_bullet_to_player_collision)
+            // Add the query to the system
             .query(
+                // The query name is "Enemy_Bullet"
                 "Enemy_Bullet",
+                // The query is fetch all the entities that have the Transform and Bullet component
+                // The Transform will only have the permission to read whereas the Bullet will have the permission to write
                 Query::new()
                     .intersect::<Transform>(Access::Read)
                     .intersect::<Bullet>(Access::Write),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Player"
                 "Player",
+                // The query is fetch all the entities that have the Player and Transfrom component
+                // The Player will have the permission to write whereas the Transform will only have the permission to read
                 Query::new()
                     .intersect::<Player>(Access::Write)
                     .intersect::<Transform>(Access::Read),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Player_Status_Update"
                 "Player_Status_Update",
+                // The query is fetch all the entities that have the PlayerStatus component with a permission to write the component
                 Query::new().intersect::<PlayerStatus>(Access::Write),
             )
+            // Add another query to the system
             .query(
+                // The query name is "Score_Update"
                 "Score_Update",
+                // The query is fetch all the entities that have the Score component with a permission to write the component
                 Query::new().intersect::<Score>(Access::Write),
             )
+            // Build that system
             .build();
 
         Self
     }
 }
 
+// Implement the function systems for the server
 impl ServerState {
+    // The function that will spawn the player
     fn spawn_player(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // Get the FrameTime event
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
-
+        // For every entity that qualify from the query "Player" will be processed
         for entity in query.iter("Player") {
+            // If the player is dead
             if !(query.read::<PlayerStatus>(entity).status) {
+                // Read the time when the PlayerStatus componenet
                 let mut dead_time = query.read::<PlayerStatus>(entity).dead_time;
+                // If the player just died
                 if dead_time == 0.0 {
+                    // Record the dead time to the current time
                     dead_time = frame_time.time;
                 }
+                // If the player has been dead for a certain amount of time (PLAYER_SPAWN_TIME)
                 if dead_time + PLAYER_SPAWN_TIME < frame_time.time {
+                    // Recreate the player entity
                     io.create_entity()
                         .add_component(
                             Transform::default()
@@ -597,11 +709,15 @@ impl ServerState {
                         .add_component(Player::default())
                         .add_component(Synchronized)
                         .build();
+                    // Throw away the timer entity (PlayerStatus)
                     io.remove_entity(entity);
+                    // Recreate the PlayerStatus entity with the default value
                     io.create_entity()
                         .add_component(PlayerStatus::default())
                         .build();
-                } else {
+                }
+                // Otherwise, update the dead time on the PlayerStatus entity
+                else {
                     query.modify::<PlayerStatus>(entity, |value| {
                         value.dead_time = dead_time;
                     })
@@ -609,19 +725,27 @@ impl ServerState {
             }
         }
     }
-
+    // The function that will spawn the enemy
     fn spawn_enemy(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // Get the FrameTime event
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
+        // If there are less enemy entities on the screen than the max enemy count from the query "Enemy_Count"
         if (query.iter("Enemy_Count").count() as u32) < ENEMY_COUNT {
+            // For every entity that qualify from the query "Enemy_Status" will be processed
             for entity in query.iter("Enemy_Status") {
+                // Read the dead time from the EnemyStatus component
                 let mut dead_time = query.read::<EnemyStatus>(entity).0;
 
+                // If the enemy just died
                 if dead_time == 0.0 {
+                    // Record the dead time of the enemy to the current time
                     dead_time = frame_time.time;
                 }
 
+                // If the enemy has been dead for a certain amount of time (ENEMY_SPAWN_TIME)
                 if dead_time + ENEMY_SPAWN_TIME < frame_time.time {
+                    // Recreate the enemy entity
                     io.create_entity()
                         .add_component(
                             Transform::default()
@@ -632,9 +756,13 @@ impl ServerState {
                         .add_component(Synchronized)
                         .add_component(Enemy::default())
                         .build();
+                    // Throw away the timer entity (EnemyStatus)
                     io.remove_entity(entity);
+                    // Recreate the EnemyStatus entity with the default value
                     io.create_entity().add_component(EnemyStatus(0.0)).build();
-                } else {
+                }
+                // Otherwise, update the dead time on the EnemyStatus entity
+                else {
                     query.modify::<EnemyStatus>(entity, |value| {
                         value.0 = dead_time;
                     })
@@ -642,22 +770,29 @@ impl ServerState {
             }
         }
     }
-
+    // The function that will handle the player movement
     fn player_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // When a MoveCommand event is received from the client
         for player_movement in io.inbox::<MoveCommand>() {
+            // For every entity that qualify from the query "Player_Movement" will be processed
             for entity in query.iter("Player_Movement") {
+                // Set the limit of the player movement
                 let x_limit = WITDH / 2.0;
+                // If the player is about to go out of bound
                 if query.read::<Player>(entity).current_position.x + player_movement.0.x - 3.
                     < -x_limit
                     || query.read::<Player>(entity).current_position.x + player_movement.0.x + 3.
                         > x_limit
                 {
+                    // Do not move the player and conclude the function
                     return;
                 }
 
+                // Otherwise, move the player
                 query.modify::<Transform>(entity, |transform| {
                     transform.pos += player_movement.0;
                 });
+                // Update the new player position
                 query.modify::<Player>(entity, |player| {
                     player.current_position += player_movement.0;
                 });
@@ -665,93 +800,132 @@ impl ServerState {
         }
     }
 
+    // The function that will handle the enemy movement
     fn enemy_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // For every entity that qualify from the query "Enemy_Movement" will be processed
         for entity in query.iter("Enemy_Movement") {
+            // Get the FrameTime event
             let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
-
+            // Set pcg for random movement and direction (random generator)
             let mut pcg_random_move = Pcg::new();
             let mut pcg_random_direction = Pcg::new();
 
+            // Based on the random value, the enemty will move in a random x direction
             let x = if pcg_random_direction.gen_bool() {
                 pcg_random_move.gen_f32() * 1.
             } else {
                 pcg_random_move.gen_f32() * -1.
             };
 
+            // Based on the random value, the enemty will move in a random y direction
             let y = if pcg_random_direction.gen_bool() {
                 pcg_random_move.gen_f32() * 1.
             } else {
                 pcg_random_move.gen_f32() * -1.
             };
 
+            // Declare the enemy direction that will be used for the next frame
             let speed = Vec3::new(x, y, 0.);
 
+            // Update the enemy speed based on the frame_time delta value
             let direction = speed.normalize() * frame_time.delta * ENEMY_SPEED;
+
+            // Declare the out of bound limits
             let x_limit = WITDH / 2.0;
             let y_upper_limit = HEIGHT / 2.;
             let y_limit = HEIGHT / 5.;
+
+            // Read the current enemy position
             let current_position = query.read::<Enemy>(entity).current_position;
 
+            // If the enemy is about to go out of bound
             if (current_position.x + direction.x - 3. < -x_limit)
                 || (current_position.x + direction.x + 3. > x_limit)
                 || (current_position.y + direction.y >= y_upper_limit)
                 || (current_position.y + direction.y < y_limit)
             {
+                // Do not move the enemy and conclude the function
                 return;
             }
+            // Otherwise, move the enemy
             query.modify::<Transform>(entity, |transform| {
                 transform.pos += direction;
             });
+            // Update the new enemy position
             query.modify::<Enemy>(entity, |enemy| {
                 enemy.current_position += direction;
             });
         }
     }
 
+    // The function that will handle the player fire
     fn player_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // If the FireCommand event is received from the client
         if let Some(FireCommand(value)) = io.inbox_first() {
+            // For every entity that qualify from the query "Player_Fire_Input" will be processed
             for entity in query.iter("Player_Fire_Input") {
+                // Create the bullet entity from the plauyer position (the left bullet)
                 io.create_entity()
+                    // Add the render component as triangle
                     .add_component(
                         Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
                     )
+                    // Add the synchronized component
                     .add_component(Synchronized)
+                    // Add the bullet component that is from the player and from which entity is from (player entity in this case)
                     .add_component(Bullet {
                         from_enemy: false,
                         from_player: true,
                         entity_id: entity,
                     })
+                    // Add the transform component with the position based on the player current position + top left
                     .add_component(Transform::default().with_position(
-                        query.read::<Player>(entity).current_position + Vec3::new(-1.5, 1.5, 0.0),
+                        query.read::<Player>(entity).current_position
+                            + Vec3::new(-PLAYER_SIZE / 2., PLAYER_SIZE / 2., 0.0),
                     ))
+                    // Build the entity
                     .build();
 
+                // Create the bullet entity from the plauyer position (the right bullet)
                 io.create_entity()
+                    // Add the render component as triangle
                     .add_component(
                         Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
                     )
+                    // Add the synchronized component
                     .add_component(Synchronized)
+                    // Add the bullet component that is from the player and from which entity is from (player entity in this case)
                     .add_component(Bullet {
                         from_enemy: false,
                         from_player: true,
                         entity_id: entity,
                     })
+                    // Add the transform component with the position based on the player current position + top right
                     .add_component(Transform::default().with_position(
-                        query.read::<Player>(entity).current_position + Vec3::new(1.5, 1.5, 0.0),
+                        query.read::<Player>(entity).current_position
+                            + Vec3::new(PLAYER_SIZE / 2., PLAYER_SIZE / 2., 0.0),
                     ))
+                    // Build the entity
                     .build();
             }
         }
     }
 
+    // The function that will handle the player bullet movement
     fn player_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // Get the FrameTime event
         let Some(frame_time) = io.inbox_first::<FrameTime>() else { return };
 
+        // For every entity that qualify from the query "Player_Bullet_Movement" will be processed
         for entity in query.iter("Player_Bullet_Movement") {
+            // If the bullet is from the player
             if query.read::<Bullet>(entity).from_player {
+                // If the bullet is out of bound
                 if query.read::<Transform>(entity).pos.y > HEIGHT / 2. - 2.5 {
+                    // Remove the bullet entity
                     io.remove_entity(entity);
                 }
+                // Otherwise, move the bullet
                 query.modify::<Transform>(entity, |transform| {
                     transform.pos +=
                         Vec3::new(0.0, 1.0, 0.0) * frame_time.delta * PLAYER_BULLET_SPEED;
@@ -760,44 +934,63 @@ impl ServerState {
         }
     }
 
+    // The function that will handle the enemy fire update
     fn enemy_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // Set the random generator for the enemy fire
         let mut pcg_fire = Pcg::new();
 
+        // For every entity that qualify from the query "Enemy_Fire_Input" will be processed
         for entity in query.iter("Enemy_Fire_Input") {
+            // If the random generator return true to fire
             if pcg_fire.gen_bool() {
+                // If the enemy bullet count is less than the max bullet count on screen from each enemy
                 if query.read::<Enemy>(entity).bullet_count < ENEMY_MAX_BULLET {
+                    // Increase the bullet count that are on screen from that enemy by 1
                     query.modify::<Enemy>(entity, |value| {
                         value.bullet_count += 1;
                     });
+                    // Create the bullet entity from the enemy position
                     io.create_entity()
+                        // Add the render component as triangle
                         .add_component(
                             Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
                         )
+                        // Add the synchronized component
                         .add_component(Synchronized)
+                        // Add the bullet component that is from the enemy and from which entity is from (enemy entity in this case)
                         .add_component(Bullet {
                             from_enemy: true,
                             from_player: false,
                             entity_id: entity,
                         })
+                        // Add the transform component with the position based on the enemy current position + top (bottom based on player persepective)
                         .add_component(Transform::default().with_position(
-                            query.read::<Enemy>(entity).current_position + Vec3::new(0., 1.5, 0.),
+                            query.read::<Enemy>(entity).current_position
+                                + Vec3::new(0., -ENEMY_SIZE / 2., 0.),
                         ))
+                        // Build the entity
                         .build();
                 }
             }
         }
     }
 
+    // The function that will handle the enemy bullet movement
     fn enemy_bullet_movement_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // Get the FrameTime event
         if let Some(frame_time) = io.inbox_first::<FrameTime>() {
+            // For every entity that qualify from the query "Enemy_Bullet_Movement" will be processed
             for entity in query.iter("Enemy_Bullet_Movement") {
+                // If the bullet is from the enemy
                 if query.read::<Bullet>(entity).from_enemy {
+                    // If the bullet is out of bound
                     if query.read::<Transform>(entity).pos.y < -HEIGHT / 2. + 2.5 {
-                        // If that enemy key exists in the game or not
+                        // If that enemy entity exists on the screen from the query "Enemy_Bullet_Count_Update"
                         if query
                             .iter("Enemy_Bullet_Count_Update")
                             .any(|id| id == query.read::<Bullet>(entity).entity_id)
                         {
+                            // Decrease the bullet count that are on screen from that enemy by 1
                             query.modify::<Enemy>(
                                 query.read::<Bullet>(entity).entity_id,
                                 |value| {
@@ -805,8 +998,10 @@ impl ServerState {
                                 },
                             );
                         }
+                        // Remove the bullet entity
                         io.remove_entity(entity);
                     }
+                    // Otherwise, move the bullet
                     query.modify::<Transform>(entity, |transform| {
                         transform.pos +=
                             Vec3::new(0.0, -1.0, 0.0) * frame_time.delta * ENEMY_BULLET_SPEED;
@@ -816,31 +1011,38 @@ impl ServerState {
         }
     }
 
+    // The function that will handle the collision from player bullet to enemy
     fn player_bullet_to_enemy_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
-        // Size is 3 pixel sqaure
+        // For every entity that qualify from the query "Player_Bullet" will be processed
         for entity1 in query.iter("Player_Bullet") {
+            // If the bullet is from the player
             if query.read::<Bullet>(entity1).from_player {
+                // For every entity that qualify from the query "Enemy" will be processed
                 for entity2 in query.iter("Enemy") {
-                    let bullet_size = 0.5;
-                    let enemy_size = 3.;
+                    // Get the current position of the bullet and the enemy
                     let current_player_bullet = query.read::<Transform>(entity1).pos;
                     let current_enemy = query.read::<Transform>(entity2).pos;
 
+                    // If the bullet hit the enemy
                     if collision_detection(
                         current_player_bullet.x,
                         current_player_bullet.y,
-                        bullet_size,
+                        BULLET_SIZE,
                         current_enemy.x,
                         current_enemy.y,
-                        enemy_size,
+                        ENEMY_SIZE,
                     ) {
+                        // Remove the bullet entity
                         io.remove_entity(entity1);
+                        // Remove the enemy entity
                         io.remove_entity(entity2);
+                        // For every entity that qualify from the query "Score_Update" will be processed
                         for entity3 in query.iter("Score_Update") {
+                            // Increase the score by 1
                             query.modify::<Score>(entity3, |value| {
                                 value.0 += 1;
                             });
-                            dbg!(query.read::<Score>(entity3).0);
+                            dbg!(query.read::<Score>(entity3).0); // TODO: Display this score on the client side
                         }
                     }
                 }
@@ -848,35 +1050,45 @@ impl ServerState {
         }
     }
 
+    // The function that will handle the collision from enemy bullet to player
     fn enemy_bullet_to_player_collision(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // For every entity that qualify from the query "Enemy_Bullet" will be processed
         for entity1 in query.iter("Enemy_Bullet") {
+            // If the bullet is from the enemy
             if query.read::<Bullet>(entity1).from_enemy {
+                // For every entity that qualify from the query "Player" will be processed
                 for entity2 in query.iter("Player") {
-                    let bullet_size = 0.5;
-                    let enemy_size = 3.;
+                    // Get the current position of the bullet and the player
                     let current_enemy_bullet = query.read::<Transform>(entity1).pos;
                     let current_player = query.read::<Transform>(entity2).pos;
 
+                    // If the bullet hit the player
                     if collision_detection(
                         current_enemy_bullet.x,
                         current_enemy_bullet.y,
-                        bullet_size,
+                        BULLET_SIZE,
                         current_player.x,
                         current_player.y,
-                        enemy_size,
+                        PLAYER_SIZE,
                     ) {
+                        // Remove the bullet entity
                         io.remove_entity(entity1);
+                        // Remove the player entity
                         io.remove_entity(entity2);
+                        // For every entity that qualify from the query "Player_Status_Update" will be processed
                         for entity3 in query.iter("Player_Status_Update") {
+                            // Set the player status as dead
                             query.modify::<PlayerStatus>(entity3, |value| {
                                 value.status = false;
                             });
                         }
+                        // For every entity that qualify from the query "Score_Update" will be processed
                         for entity4 in query.iter("Score_Update") {
+                            // Reset the score to 0
                             query.modify::<Score>(entity4, |value| {
                                 value.0 = 0;
                             });
-                            dbg!(query.read::<Score>(entity4).0);
+                            dbg!(query.read::<Score>(entity4).0); // TODO: Display this score on the client side
                         }
                     }
                 }
@@ -885,6 +1097,7 @@ impl ServerState {
     }
 }
 
+// The function that will handle the collision detection
 fn collision_detection(
     obj1_x_position: f32,
     obj1_y_position: f32,
@@ -893,13 +1106,16 @@ fn collision_detection(
     obj2_y_position: f32,
     obj2_size: f32,
 ) -> bool {
+    // If the object 1 is within the object 2 based on the sqaure hitbox intersection
     if obj1_x_position - (obj1_size / 2.) <= obj2_x_position + (obj2_size / 2.)
         && obj1_x_position + (obj1_size / 2.) >= obj2_x_position - (obj2_size / 2.)
         && (obj1_y_position - (obj1_size / 2.) <= obj2_y_position + (obj2_size / 2.))
         && (obj1_y_position + (obj1_size / 2.) >= obj2_y_position - (obj2_size / 2.))
     {
+        // Return true if the object 1 is within the object 2, or vice versa
         return true;
     }
+    // Otherwise, return false
     return false;
 }
 
