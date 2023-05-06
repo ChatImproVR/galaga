@@ -1,19 +1,7 @@
-# ChatImproVR template
-## Change the package's name in Cargo.toml 
-It is very important to give your resources unique names! Pick a **unique** name for your plugin, ideally a long name, and assign it to `name = ""` in `Cargo.toml`. This way you can use the helpful `pkg_namespace!()` macro to assign public names to your resources!
+# Welcome to Galaga Tutorial for ChatImproVR
+This plugin will contain all the code from the tutorial, "[Beginner Plugin Development Tutorial](ttps://chatimprovr.github.io/The-Book/Beginner_Tutorial/beginner_plugin_development_tutorial.html)".
+We strongly suggest you to read over the tutorial while reading the source code as well if you are new on developing plugins for ChatImproVR.
 
+If you find any problems or trouble of understanding even after reading the tutorial, please reach out one of the [four developers](https://chatimprovr.github.io/The-Book/introduction.html#where-can-i-find-help). At the same time, if you have any ideas for improvement for either the code or the structure itself, you can also reach out to the developers and will modify accordingly.
 
-## Preparation
-Make sure you have the `wasm32-unknown-unknown` target installed:
-```sh
-rustup target add wasm32-unknown-unknown
-```
-
-## Building
-Now you can use `cargo build --release` to build. Your plugin will show up under `target/wasm32-unknown-unknown/release/<cool pkg name>.wasm`.
-
-## Testing
-Because `.cargo/config.toml` is set up to compile for the WASM target, tests will fail to run by default. You can compile and run tests using the provided `test_pc` alias:
-```sh
-cargo test_pc
-```
+I hope you find this code helpful so that we can see more creative plugins for our ChatImproVR engine!
