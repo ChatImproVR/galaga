@@ -137,6 +137,17 @@ const PLAYER_BULLET_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Player 
 const ENEMY_BULLET_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Enemy Bullet"));
 const WINDOW_SIZE_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Window Size"));
 
+const ZERO_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Zero Text"));
+const ONE_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("One Text"));
+const TWO_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Two Text"));
+const THREE_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Three Text"));
+const FOUR_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Four Text"));
+const FIVE_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Five Text"));
+const SIX_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Six Text"));
+const SEVEN_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Seven Text"));
+const EIGHT_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Eight Text"));
+const NINE_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Nine Text"));
+
 // Create Meshes for each object
 
 // Create the Player Mesh --> This is commented out because we are using obj file
@@ -275,6 +286,129 @@ impl UserState for ClientState {
             mesh: window_size(),
         });
 
+        // Declare the enemy color as faded gray
+        let text_color = [0.37, 0.37, 0.37];
+
+        let mut zero_text = obj_lines_to_mesh(&include_str!("assets/zero.obj"));
+
+        zero_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: ZERO_TEXT_HANDLE,
+            mesh: zero_text,
+        });
+
+        let mut one_text = obj_lines_to_mesh(&include_str!("assets/one.obj"));
+
+        one_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: ONE_TEXT_HANDLE,
+            mesh: one_text,
+        });
+
+        let mut two_text = obj_lines_to_mesh(&include_str!("assets/two.obj"));
+
+        two_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: TWO_TEXT_HANDLE,
+            mesh: two_text,
+        });
+
+        let mut three_text = obj_lines_to_mesh(&include_str!("assets/three.obj"));
+
+        three_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: THREE_TEXT_HANDLE,
+            mesh: three_text,
+        });
+
+        let mut four_text = obj_lines_to_mesh(&include_str!("assets/four.obj"));
+
+        four_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: FOUR_TEXT_HANDLE,
+            mesh: four_text,
+        });
+
+        let mut five_text = obj_lines_to_mesh(&include_str!("assets/five.obj"));
+
+        five_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: FIVE_TEXT_HANDLE,
+            mesh: five_text,
+        });
+
+        let mut six_text = obj_lines_to_mesh(&include_str!("assets/six.obj"));
+
+        six_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: SIX_TEXT_HANDLE,
+            mesh: six_text,
+        });
+
+        let mut seven_text = obj_lines_to_mesh(&include_str!("assets/seven.obj"));
+
+        seven_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: SEVEN_TEXT_HANDLE,
+            mesh: seven_text,
+        });
+
+        let mut eight_text = obj_lines_to_mesh(&include_str!("assets/eight.obj"));
+
+        eight_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: EIGHT_TEXT_HANDLE,
+            mesh: eight_text,
+        });
+
+        let mut nine_text = obj_lines_to_mesh(&include_str!("assets/nine.obj"));
+
+        nine_text
+            .vertices
+            .iter_mut()
+            .for_each(|v| v.uvw = text_color);
+
+        io.send(&UploadMesh {
+            id: NINE_TEXT_HANDLE,
+            mesh: nine_text,
+        });
+
         // Add player movement input based on keyboard/controller input
         sched
             .add_system(Self::player_input_movement_update)
@@ -397,6 +531,10 @@ impl UserState for ServerState {
         io.create_entity()
             // Add the score component with the initial score of 0
             .add_component(Score(0))
+            .add_component(
+                // Add the transform component for movement
+                Transform::default(),
+            )
             // Build the entity
             .build();
 
@@ -629,7 +767,9 @@ impl UserState for ServerState {
                 // The query name is "Score_Update"
                 "Score_Update",
                 // The query is fetch all the entities that have the Score component with a permission to write the component
-                Query::new().intersect::<Score>(Access::Write),
+                Query::new()
+                    .intersect::<Score>(Access::Write)
+                    .intersect::<Transform>(Access::Read),
             )
             // Build that system
             .build();
@@ -670,9 +810,21 @@ impl UserState for ServerState {
                 // The query name is "Score_Update"
                 "Score_Update",
                 // The query is fetch all the entities that have the Score component with a permission to write the component
-                Query::new().intersect::<Score>(Access::Write),
+                Query::new()
+                    .intersect::<Score>(Access::Write)
+                    .intersect::<Transform>(Access::Read),
             )
             // Build that system
+            .build();
+
+        sched
+            .add_system(Self::score_display)
+            .query(
+                "Score",
+                Query::new()
+                    .intersect::<Score>(Access::Read)
+                    .intersect::<Transform>(Access::Read),
+            )
             .build();
 
         Self
@@ -1042,7 +1194,6 @@ impl ServerState {
                             query.modify::<Score>(entity3, |value| {
                                 value.0 += 1;
                             });
-                            dbg!(query.read::<Score>(entity3).0); // TODO: Display this score on the client side
                         }
                     }
                 }
@@ -1088,11 +1239,16 @@ impl ServerState {
                             query.modify::<Score>(entity4, |value| {
                                 value.0 = 0;
                             });
-                            dbg!(query.read::<Score>(entity4).0); // TODO: Display this score on the client side
                         }
                     }
                 }
             }
+        }
+    }
+
+    fn score_display(&mut self, io: &mut EngineIo, query: &mut QueryResult){
+        for entity in query.iter("Score_Update") {
+            dbg!(query.read::<Score>(entity).0); // TODO: Display this score on the client side
         }
     }
 }
