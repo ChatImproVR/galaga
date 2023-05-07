@@ -127,8 +127,26 @@ impl Default for PlayerStatus {
 pub struct EnemyStatus(f32);
 
 // Add Score Component
-#[derive(Component, Serialize, Deserialize, Copy, Clone, Default)]
-pub struct Score(u32);
+#[derive(Component, Serialize, Deserialize, Copy, Clone)]
+pub struct Score {
+    pub score: u32,
+    pub second_digit: u32,
+    pub first_digit: u32,
+    pub second_digit_entity: EntityId,
+    pub first_digit_entity: EntityId,
+}
+
+impl Default for Score {
+    fn default() -> Self {
+        Self {
+            score: 0,
+            second_digit: 10,
+            first_digit: 10,
+            second_digit_entity: EntityId(0),
+            first_digit_entity: EntityId(0),
+        }
+    }
+}
 
 // Create mesh handleer based on each object's name
 const PLAYER_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Player"));
@@ -530,11 +548,7 @@ impl UserState for ServerState {
         // Create a score entity
         io.create_entity()
             // Add the score component with the initial score of 0
-            .add_component(Score(0))
-            .add_component(
-                // Add the transform component for movement
-                Transform::default(),
-            )
+            .add_component(Score::default())
             // Build the entity
             .build();
 
@@ -767,9 +781,7 @@ impl UserState for ServerState {
                 // The query name is "Score_Update"
                 "Score_Update",
                 // The query is fetch all the entities that have the Score component with a permission to write the component
-                Query::new()
-                    .intersect::<Score>(Access::Write)
-                    .intersect::<Transform>(Access::Read),
+                Query::new().intersect::<Score>(Access::Write),
             )
             // Build that system
             .build();
@@ -810,21 +822,14 @@ impl UserState for ServerState {
                 // The query name is "Score_Update"
                 "Score_Update",
                 // The query is fetch all the entities that have the Score component with a permission to write the component
-                Query::new()
-                    .intersect::<Score>(Access::Write)
-                    .intersect::<Transform>(Access::Read),
+                Query::new().intersect::<Score>(Access::Write),
             )
             // Build that system
             .build();
 
         sched
             .add_system(Self::score_display)
-            .query(
-                "Score",
-                Query::new()
-                    .intersect::<Score>(Access::Read)
-                    .intersect::<Transform>(Access::Read),
-            )
+            .query("Score", Query::new().intersect::<Score>(Access::Read))
             .build();
 
         Self
@@ -1192,7 +1197,7 @@ impl ServerState {
                         for entity3 in query.iter("Score_Update") {
                             // Increase the score by 1
                             query.modify::<Score>(entity3, |value| {
-                                value.0 += 1;
+                                value.score += 1;
                             });
                         }
                     }
@@ -1237,7 +1242,7 @@ impl ServerState {
                         for entity4 in query.iter("Score_Update") {
                             // Reset the score to 0
                             query.modify::<Score>(entity4, |value| {
-                                value.0 = 0;
+                                value.score = 0;
                             });
                         }
                     }
@@ -1246,9 +1251,72 @@ impl ServerState {
         }
     }
 
-    fn score_display(&mut self, io: &mut EngineIo, query: &mut QueryResult){
-        for entity in query.iter("Score_Update") {
-            dbg!(query.read::<Score>(entity).0); // TODO: Display this score on the client side
+    fn score_display(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        for entity in query.iter("Score") {
+            let digit_list = [
+                ZERO_TEXT_HANDLE,
+                ONE_TEXT_HANDLE,
+                TWO_TEXT_HANDLE,
+                THREE_TEXT_HANDLE,
+                FOUR_TEXT_HANDLE,
+                FIVE_TEXT_HANDLE,
+                SIX_TEXT_HANDLE,
+                SEVEN_TEXT_HANDLE,
+                EIGHT_TEXT_HANDLE,
+                NINE_TEXT_HANDLE,
+            ];
+
+            // Fetch the current score based on the digit placements
+            let first_digit = (query.read::<Score>(entity).score % 10) as usize;
+            let second_digit = (query.read::<Score>(entity).score / 10) as usize;
+
+            if (query.read::<Score>(entity).first_digit != first_digit as u32)
+                || (query.read::<Score>(entity).second_digit != second_digit as u32)
+            {
+                io.remove_entity(query.read::<Score>(entity).first_digit_entity);
+                io.remove_entity(query.read::<Score>(entity).second_digit_entity);
+                
+                // Second Digit Entity
+                let second_entity_id = io
+                    .create_entity()
+                    // Add the render component as triangle
+                    .add_component(
+                        Render::new(digit_list[second_digit]).primitive(Primitive::Lines),
+                    )
+                    // Add the synchronized component
+                    .add_component(Synchronized)
+                    // Add the transform component with the position based on the enemy current position + top (bottom based on player persepective)
+                    .add_component(
+                        Transform::default()
+                            .with_position(Vec3::new(-2.5, 0., 0.))
+                            .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                    )
+                    // Build the entity
+                    .build();
+
+                // First Digit Entity
+                let first_entity_id = io
+                    .create_entity()
+                    // Add the render component as triangle
+                    .add_component(
+                        Render::new(digit_list[first_digit]).primitive(Primitive::Lines),
+                    )
+                    // Add the synchronized component
+                    .add_component(Synchronized)
+                    // Add the transform component with the position based on the enemy current position + top (bottom based on player persepective)
+                    .add_component(
+                        Transform::default()
+                            .with_position(Vec3::new(2.5, 0., 0.))
+                            .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                    )
+                    // Build the entity
+                    .build();
+
+                query.modify::<Score>(entity, |value| {
+                    value.first_digit_entity = first_entity_id;
+                    value.second_digit_entity = second_entity_id;
+                });
+            }
         }
     }
 }
