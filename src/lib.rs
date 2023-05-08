@@ -1252,7 +1252,9 @@ impl ServerState {
     }
 
     fn score_display(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
+        // For every entity that qualify from the query "Score" will be processed
         for entity in query.iter("Score") {
+            // The text handle list for the digit
             let digit_list = [
                 ZERO_TEXT_HANDLE,
                 ONE_TEXT_HANDLE,
@@ -1270,13 +1272,15 @@ impl ServerState {
             let first_digit = (query.read::<Score>(entity).score % 10) as usize;
             let second_digit = (query.read::<Score>(entity).score / 10) as usize;
 
+            // If there is a change in the display digit from the current score
             if (query.read::<Score>(entity).first_digit != first_digit as u32)
                 || (query.read::<Score>(entity).second_digit != second_digit as u32)
             {
+                // Remove the old digit entities
                 io.remove_entity(query.read::<Score>(entity).first_digit_entity);
                 io.remove_entity(query.read::<Score>(entity).second_digit_entity);
                 
-                // Second Digit Entity
+                // Create the Second Digit Entity
                 let second_entity_id = io
                     .create_entity()
                     // Add the render component as triangle
@@ -1285,7 +1289,7 @@ impl ServerState {
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
-                    // Add the transform component with the position based on the enemy current position + top (bottom based on player persepective)
+                    // Add the transform component with the position on left middle screen
                     .add_component(
                         Transform::default()
                             .with_position(Vec3::new(-2.5, 0., 0.))
@@ -1294,7 +1298,7 @@ impl ServerState {
                     // Build the entity
                     .build();
 
-                // First Digit Entity
+                // Create the First Digit Entity
                 let first_entity_id = io
                     .create_entity()
                     // Add the render component as triangle
@@ -1303,7 +1307,7 @@ impl ServerState {
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
-                    // Add the transform component with the position based on the enemy current position + top (bottom based on player persepective)
+                    // Add the transform component with the position on right middle screen
                     .add_component(
                         Transform::default()
                             .with_position(Vec3::new(2.5, 0., 0.))
@@ -1312,6 +1316,7 @@ impl ServerState {
                     // Build the entity
                     .build();
 
+                // Update the score display values entities
                 query.modify::<Score>(entity, |value| {
                     value.first_digit_entity = first_entity_id;
                     value.second_digit_entity = second_entity_id;
