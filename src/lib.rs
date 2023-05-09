@@ -1018,7 +1018,7 @@ impl ServerState {
     // The function that will handle the player fire
     fn player_fire_update(&mut self, io: &mut EngineIo, query: &mut QueryResult) {
         // If the FireCommand event is received from the client
-        if let Some(FireCommand(value)) = io.inbox_first() {
+        if let Some(FireCommand(_value)) = io.inbox_first() {
             // For every entity that qualify from the query "Player_Fire_Input" will be processed
             for entity in query.iter("Player_Fire_Input") {
                 // Create the bullet entity from the plauyer position (the left bullet)
@@ -1285,7 +1285,7 @@ impl ServerState {
                     .create_entity()
                     // Add the render component as triangle
                     .add_component(
-                        Render::new(digit_list[second_digit]).primitive(Primitive::Lines),
+                        Render::new(digit_list[second_digit]).primitive(Primitive::Triangles),
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
@@ -1303,7 +1303,7 @@ impl ServerState {
                     .create_entity()
                     // Add the render component as triangle
                     .add_component(
-                        Render::new(digit_list[first_digit]).primitive(Primitive::Lines),
+                        Render::new(digit_list[first_digit]).primitive(Primitive::Triangles),
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
