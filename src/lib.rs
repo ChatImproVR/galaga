@@ -1,5 +1,5 @@
 // Add libraries from the cimvr_engine_interface crate
-use cimvr_engine_interface::{dbg, make_app_state, pcg::Pcg, pkg_namespace, prelude::*, FrameTime};
+use cimvr_engine_interface::{make_app_state, pcg::Pcg, pkg_namespace, prelude::*, FrameTime};
 
 // Add libraries from the cimvr_common crate
 use cimvr_common::{
