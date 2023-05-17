@@ -45,12 +45,12 @@ struct ClientState {
 }
 
 // Add movement command as message from client to server
-#[derive(Message, Serialize, Deserialize, Clone, Copy)]
+#[derive(Message, Serialize, Deserialize)]
 #[locality("Remote")]
 struct MoveCommand(Vec3);
 
 // Add fire command as a message from client to server
-#[derive(Message, Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Message, Serialize, Deserialize)]
 #[locality("Remote")]
 struct FireCommand(bool);
 
