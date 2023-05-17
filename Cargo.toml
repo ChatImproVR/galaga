@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-cimvr_common = { path = "../iteration0/common/" }
-cimvr_engine_interface  = { path = "../iteration0/engine_interface" }
+cimvr_common = { path = "../chatimprovr/common/" }
+cimvr_engine_interface  = { path = "../chatimprovr/engine_interface" }
 serde = { version = "1", features = ["derive"] }
-obj_reader = {path = "../iteration0/obj_loader"}
+obj_reader = {path = "../chatimprovr/obj_loader"}
