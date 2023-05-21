@@ -1,3 +1,5 @@
+use std::{f32::consts::PI};
+
 // Add libraries from the cimvr_engine_interface crate
 use cimvr_engine_interface::{make_app_state, pcg::Pcg, pkg_namespace, prelude::*, FrameTime};
 
@@ -561,7 +563,7 @@ impl UserState for ServerState {
                     // Set the bottom middle of the screen as the initial position
                     .with_position(Vec3::new(0.0, -50.0, 0.0))
                     // Set the initial rotation to be facing towards to the player based on the camera angle (no needed if you create the object facing a different direction)
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                    .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
             )
             // Add the render component to draw the player with lines
             .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
@@ -582,7 +584,7 @@ impl UserState for ServerState {
                     .with_position(Vec3::new(0.0, 50.0, 0.0))
                     // Set the initial rotation to be facing towards to the player based on the camera angle
                     // (no needed if you create the object facing a different direction or differen angle rotation)
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                    .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
             )
             // Add the render component to draw the enemy with lines
             .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
@@ -860,7 +862,7 @@ impl ServerState {
                         .add_component(
                             Transform::default()
                                 .with_position(Vec3::new(0.0, -50.0, 0.0))
-                                .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                                .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
                         )
                         .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
                         .add_component(Player::default())
@@ -907,7 +909,7 @@ impl ServerState {
                         .add_component(
                             Transform::default()
                                 .with_position(Vec3::new(0.0, 50.0, 0.0))
-                                .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                                .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
                         )
                         .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
                         .add_component(Synchronized)
@@ -1293,7 +1295,7 @@ impl ServerState {
                     .add_component(
                         Transform::default()
                             .with_position(Vec3::new(-2.5, 0., 0.))
-                            .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                            .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
                     )
                     // Build the entity
                     .build();
@@ -1311,7 +1313,7 @@ impl ServerState {
                     .add_component(
                         Transform::default()
                             .with_position(Vec3::new(2.5, 0., 0.))
-                            .with_rotation(Quat::from_euler(EulerRot::XYZ, 90., 0., 0.)),
+                            .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
                     )
                     // Build the entity
                     .build();
