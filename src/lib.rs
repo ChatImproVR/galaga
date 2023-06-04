@@ -1,4 +1,4 @@
-use std::{f32::consts::PI};
+use std::f32::consts::PI;
 
 // Add libraries from the cimvr_engine_interface crate
 use cimvr_engine_interface::{make_app_state, pcg::Pcg, pkg_namespace, prelude::*, FrameTime};
@@ -563,7 +563,7 @@ impl UserState for ServerState {
                     // Set the bottom middle of the screen as the initial position
                     .with_position(Vec3::new(0.0, -50.0, 0.0))
                     // Set the initial rotation to be facing towards to the player based on the camera angle (no needed if you create the object facing a different direction)
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
+                    .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
             )
             // Add the render component to draw the player with lines
             .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
@@ -584,7 +584,7 @@ impl UserState for ServerState {
                     .with_position(Vec3::new(0.0, 50.0, 0.0))
                     // Set the initial rotation to be facing towards to the player based on the camera angle
                     // (no needed if you create the object facing a different direction or differen angle rotation)
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
+                    .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
             )
             // Add the render component to draw the enemy with lines
             .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
@@ -826,6 +826,13 @@ impl UserState for ServerState {
                 // The query is fetch all the entities that have the Score component with a permission to write the component
                 Query::new().intersect::<Score>(Access::Write),
             )
+            // Add another query to the system
+            .query(
+                // The query name is "Enemy_Bullet_Count_Update"
+                "Enemy_Bullet_Count_Update",
+                // The query is fetch all the entities that have the Enemy component with a permission to write the component
+                Query::new().intersect::<Enemy>(Access::Write),
+            )
             // Build that system
             .build();
 
@@ -862,7 +869,7 @@ impl ServerState {
                         .add_component(
                             Transform::default()
                                 .with_position(Vec3::new(0.0, -50.0, 0.0))
-                                .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
+                                .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
                         )
                         .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
                         .add_component(Player::default())
@@ -909,7 +916,7 @@ impl ServerState {
                         .add_component(
                             Transform::default()
                                 .with_position(Vec3::new(0.0, 50.0, 0.0))
-                                .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
+                                .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
                         )
                         .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
                         .add_component(Synchronized)
@@ -938,9 +945,12 @@ impl ServerState {
                 // Set the limit of the player movement
                 let x_limit = WITDH / 2.0;
                 // If the player is about to go out of bound
-                if query.read::<Player>(entity).current_position.x + player_movement.0.x - 3.
+                if query.read::<Player>(entity).current_position.x + player_movement.0.x
+                    - PLAYER_SIZE
                     < -x_limit
-                    || query.read::<Player>(entity).current_position.x + player_movement.0.x + 3.
+                    || query.read::<Player>(entity).current_position.x
+                        + player_movement.0.x
+                        + PLAYER_SIZE
                         > x_limit
                 {
                     // Do not move the player and conclude the function
@@ -998,8 +1008,8 @@ impl ServerState {
             let current_position = query.read::<Enemy>(entity).current_position;
 
             // If the enemy is about to go out of bound
-            if (current_position.x + direction.x - 3. < -x_limit)
-                || (current_position.x + direction.x + 3. > x_limit)
+            if (current_position.x + direction.x - ENEMY_SIZE < -x_limit)
+                || (current_position.x + direction.x + ENEMY_SIZE > x_limit)
                 || (current_position.y + direction.y >= y_upper_limit)
                 || (current_position.y + direction.y < y_limit)
             {
@@ -1229,6 +1239,18 @@ impl ServerState {
                         current_player.y,
                         PLAYER_SIZE,
                     ) {
+                        // Update the bullet count from that enemy to generate more bullets
+                        if query
+                            .iter("Enemy_Bullet_Count_Update")
+                            .any(|id| id == query.read::<Bullet>(entity1).entity_id)
+                        {
+                            query.modify::<Enemy>(
+                                query.read::<Bullet>(entity1).entity_id,
+                                |value| {
+                                    value.bullet_count -= 1;
+                                },
+                            );
+                        }
                         // Remove the bullet entity
                         io.remove_entity(entity1);
                         // Remove the player entity
@@ -1281,7 +1303,7 @@ impl ServerState {
                 // Remove the old digit entities
                 io.remove_entity(query.read::<Score>(entity).first_digit_entity);
                 io.remove_entity(query.read::<Score>(entity).second_digit_entity);
-                
+
                 // Create the Second Digit Entity
                 let second_entity_id = io
                     .create_entity()
@@ -1295,7 +1317,7 @@ impl ServerState {
                     .add_component(
                         Transform::default()
                             .with_position(Vec3::new(-2.5, 0., 0.))
-                            .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
+                            .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
                     )
                     // Build the entity
                     .build();
@@ -1313,7 +1335,7 @@ impl ServerState {
                     .add_component(
                         Transform::default()
                             .with_position(Vec3::new(2.5, 0., 0.))
-                            .with_rotation(Quat::from_euler(EulerRot::XYZ, PI/2., 0., 0.)),
+                            .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
                     )
                     // Build the entity
                     .build();
