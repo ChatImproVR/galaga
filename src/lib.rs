@@ -1375,6 +1375,3 @@ fn collision_detection(
 // Defines entry points for the engine to hook into.
 // Calls new() for the appropriate state.
 make_app_state!(ClientState, ServerState);
-
-// Score (if possible) --> just need to display on the client side
-// Update README file as well
