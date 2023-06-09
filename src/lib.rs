@@ -57,7 +57,7 @@ out vec4 f_color;
 void main() {
     vec4 position = mat4 (mat3 (0.05)) * transf * vec4(pos, 1.);
     position.xz = position.zx;
-    position.xyz += vec3(29.,5.225,1.3);
+    position.xyz += vec3(29.05,5.25,1.3);
     gl_Position = proj * view * position;
     vec4 extra_c = extra[0];
     vec3 color = mix(uvw, extra_c.xyz, extra_c.w);
