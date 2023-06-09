@@ -8,7 +8,7 @@ use cimvr_common::{
     desktop::{InputEvent, KeyCode},
     gamepad::{Axis, Button, GamepadState},
     glam::{EulerRot, Quat, Vec3},
-    render::{Mesh, MeshHandle, Primitive, Render, UploadMesh, Vertex},
+    render::{Mesh, MeshHandle, Primitive, Render, UploadMesh, Vertex, ShaderHandle, ShaderSource},
     utils::input_helper::InputHelper,
     Transform,
 };
@@ -39,6 +39,46 @@ const PLAYER_SIZE: f32 = 3.; // Because of the obj file, this value is not used 
 
 // Create some constant values for Bullet
 const BULLET_SIZE: f32 = 0.5;
+
+// Shader Implementation for Demo-Room
+const VERTEX_SRC: &str = r#"
+#version 410
+
+uniform mat4 view;
+uniform mat4 proj;
+uniform mat4 transf;
+uniform mat4 extra;
+
+layout (location = 0) in vec3 pos;
+layout (location = 1) in vec3 uvw;
+
+out vec4 f_color;
+
+void main() {
+    vec4 position = mat4 (mat3 (0.05)) * transf * vec4(pos, 1.);
+    position.xz = position.zx;
+    position.xyz += vec3(29.,5.225,1.7);
+    gl_Position = proj * view * position;
+    vec4 extra_c = extra[0];
+    vec3 color = mix(uvw, extra_c.xyz, extra_c.w);
+    gl_PointSize = 2.0;
+    f_color = vec4(color, 1.);
+}
+"#;
+
+const FRAGMENT_SRC: &str = r#"
+#version 410
+precision mediump float;
+
+in vec4 f_color;
+
+out vec4 out_color;
+
+void main() {
+    out_color = f_color;
+}
+"#;
+
 
 // All state associated with client-side behaviour
 #[derive(Default)]
@@ -167,6 +207,8 @@ const SIX_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Six Text"));
 const SEVEN_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Seven Text"));
 const EIGHT_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Eight Text"));
 const NINE_TEXT_HANDLE: MeshHandle = MeshHandle::new(pkg_namespace!("Nine Text"));
+
+const DEMO_SHADER: ShaderHandle = ShaderHandle::new(pkg_namespace!("Demo Shader"));
 
 // Create Meshes for each object
 
@@ -304,6 +346,12 @@ impl UserState for ClientState {
         io.send(&UploadMesh {
             id: WINDOW_SIZE_HANDLE,
             mesh: window_size(),
+        });
+
+        io.send(&ShaderSource{
+            id: DEMO_SHADER,
+            vertex_src: VERTEX_SRC.into(),
+            fragment_src: FRAGMENT_SRC.into(),
         });
 
         // Declare the enemy color as faded gray
@@ -480,12 +528,12 @@ impl ClientState {
             }
 
             // If the keyboard input was received and the key A was pressed & held, move left by one unit
-            if self.input.key_held(KeyCode::A) {
+            if self.input.key_held(KeyCode::Left) {
                 direction += Vec3::new(-1.0, 0.0, 0.0);
             }
 
             // If the keyboard input was received and the key D was pressed & held, move right by one unit
-            if self.input.key_held(KeyCode::D) {
+            if self.input.key_held(KeyCode::Right) {
                 direction += Vec3::new(1.0, 0.0, 0.0);
             }
 
@@ -566,7 +614,7 @@ impl UserState for ServerState {
                     .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
             )
             // Add the render component to draw the player with lines
-            .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
+            .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines).shader(DEMO_SHADER))
             // Add the player component as default
             .add_component(Player::default())
             // Add the synchronized component to synchronize the entity with the client side
@@ -587,7 +635,7 @@ impl UserState for ServerState {
                     .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
             )
             // Add the render component to draw the enemy with lines
-            .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
+            .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines).shader(DEMO_SHADER))
             // Add the synchronized component to synchronize the entity with the client side
             .add_component(Synchronized)
             // Add the enemy component as default
@@ -600,7 +648,7 @@ impl UserState for ServerState {
             // Add the transform component for displaying the window
             .add_component(Transform::default())
             // Add the render component to draw the window with lines
-            .add_component(Render::new(WINDOW_SIZE_HANDLE).primitive(Primitive::Lines))
+            .add_component(Render::new(WINDOW_SIZE_HANDLE).primitive(Primitive::Lines).shader(DEMO_SHADER))
             // Add the synchronized component to synchronize the entity with the client side
             .add_component(Synchronized)
             // Build the entity
@@ -871,7 +919,7 @@ impl ServerState {
                                 .with_position(Vec3::new(0.0, -50.0, 0.0))
                                 .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
                         )
-                        .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines))
+                        .add_component(Render::new(PLAYER_HANDLE).primitive(Primitive::Lines).shader(DEMO_SHADER))
                         .add_component(Player::default())
                         .add_component(Synchronized)
                         .build();
@@ -918,7 +966,7 @@ impl ServerState {
                                 .with_position(Vec3::new(0.0, 50.0, 0.0))
                                 .with_rotation(Quat::from_euler(EulerRot::XYZ, PI / 2., 0., 0.)),
                         )
-                        .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines))
+                        .add_component(Render::new(ENEMY_HANDLE).primitive(Primitive::Lines).shader(DEMO_SHADER))
                         .add_component(Synchronized)
                         .add_component(Enemy::default())
                         .build();
@@ -1033,11 +1081,11 @@ impl ServerState {
         if let Some(FireCommand(_value)) = io.inbox_first() {
             // For every entity that qualify from the query "Player_Fire_Input" will be processed
             for entity in query.iter("Player_Fire_Input") {
-                // Create the bullet entity from the plauyer position (the left bullet)
+                // Create the bullet entity from the player position (the left bullet)
                 io.create_entity()
                     // Add the render component as triangle
                     .add_component(
-                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
+                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles).shader(DEMO_SHADER),
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
@@ -1059,7 +1107,7 @@ impl ServerState {
                 io.create_entity()
                     // Add the render component as triangle
                     .add_component(
-                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles),
+                        Render::new(PLAYER_BULLET_HANDLE).primitive(Primitive::Triangles).shader(DEMO_SHADER),
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
@@ -1122,7 +1170,7 @@ impl ServerState {
                     io.create_entity()
                         // Add the render component as triangle
                         .add_component(
-                            Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles),
+                            Render::new(ENEMY_BULLET_HANDLE).primitive(Primitive::Triangles).shader(DEMO_SHADER),
                         )
                         // Add the synchronized component
                         .add_component(Synchronized)
@@ -1309,7 +1357,7 @@ impl ServerState {
                     .create_entity()
                     // Add the render component as triangle
                     .add_component(
-                        Render::new(digit_list[second_digit]).primitive(Primitive::Triangles),
+                        Render::new(digit_list[second_digit]).primitive(Primitive::Triangles).shader(DEMO_SHADER),
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
@@ -1327,7 +1375,7 @@ impl ServerState {
                     .create_entity()
                     // Add the render component as triangle
                     .add_component(
-                        Render::new(digit_list[first_digit]).primitive(Primitive::Triangles),
+                        Render::new(digit_list[first_digit]).primitive(Primitive::Triangles).shader(DEMO_SHADER),
                     )
                     // Add the synchronized component
                     .add_component(Synchronized)
