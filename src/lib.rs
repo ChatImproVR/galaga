@@ -25,7 +25,7 @@ const HEIGHT: f32 = 120.;
 
 // Create some constant values for Enemy
 const ENEMY_COUNT: u32 = 2;
-const ENEMY_MAX_BULLET: u32 = 5;
+const ENEMY_MAX_BULLET: u32 = 7;
 const ENEMY_SPAWN_TIME: f32 = 0.5;
 const ENEMY_BULLET_SPEED: f32 = 100.;
 const ENEMY_SPEED: f32 = 50.;
@@ -57,7 +57,7 @@ out vec4 f_color;
 void main() {
     vec4 position = mat4 (mat3 (0.05)) * transf * vec4(pos, 1.);
     position.xz = position.zx;
-    position.xyz += vec3(29.,5.225,1.7);
+    position.xyz += vec3(29.,5.225,1.3);
     gl_Position = proj * view * position;
     vec4 extra_c = extra[0];
     vec3 color = mix(uvw, extra_c.xyz, extra_c.w);
